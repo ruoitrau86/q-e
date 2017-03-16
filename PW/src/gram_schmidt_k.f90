@@ -10,8 +10,8 @@
 SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap )
   !--------------------------------------------------------------------------
   !
-  ! ... Gram-Schmidt orthogonalization.
-  ! ... for k-point calculations.
+  ! ... Gram-Schmidt orthogonalization, for k-point calculations.
+  ! ... blocking algorithm is used.
   !
   USE kinds, ONLY : DP
   !

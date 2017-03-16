@@ -10,8 +10,8 @@
 SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap )
   !--------------------------------------------------------------------------
   !
-  ! ... Gram-Schmidt orthogonalization.
-  ! ... for Gamma-only calculations.
+  ! ... Gram-Schmidt orthogonalization, for Gamma-only calculations.
+  ! ... blocking algorithm is used.
   !
   USE kinds, ONLY : DP
   !
