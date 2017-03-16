@@ -10,7 +10,7 @@
 #define ONE  ( 1._DP, 0._DP )
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nblock )
+SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   !--------------------------------------------------------------------------
   !
   ! ... Gram-Schmidt orthogonalization, for k-point calculations.
@@ -18,7 +18,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nblock )
   !
   USE kinds,    ONLY : DP
   USE mp,       ONLY : mp_sum
-  USE mp_bands, ONLY : intra_bgrp_comm
+  USE mp_bands, ONLY : intra_bgrp_comm, set_bgrp_indices
   !
   IMPLICIT NONE
   !
@@ -27,11 +27,13 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nblock )
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
   LOGICAL,     INTENT(IN)    :: overlap
-  INTEGER,     INTENT(IN)    :: nblock
+  INTEGER,     INTENT(IN)    :: nbsize
   !
   ! ... local variables
   !
   INTEGER                  :: kdim, kdmx
+  INTEGER                  :: iblock, nblock
+  INTEGER                  :: iblock_start, iblock_end
   COMPLEX(DP), ALLOCATABLE :: aux(:,:)
   COMPLEX(DP), ALLOCATABLE :: sc(:,:)
   !
@@ -66,15 +68,22 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nblock )
      !
   END IF
   !
-  CALL mp_sum( sc , intra_bgrp_comm )
+  CALL mp_sum( sc, intra_bgrp_comm )
   !
-
+  ! ... Blocking loop
   !
-  ! TODO
-  ! TODO
-  ! TODO
+  nblock = nbnd / nbsize
+  IF ( MOD( nbnd, nbsize ) /= 0 ) nblock = nblock + 1
   !
-
+  CALL set_bgrp_indices( nblock, iblock_start, iblock_end )
+  !
+  DO iblock = 1, nblock
+     !
+     ! TODO
+     ! TODO
+     ! TODO
+     !
+  END DO
   !
   DEALLOCATE( aux )
   DEALLOCATE( sc )

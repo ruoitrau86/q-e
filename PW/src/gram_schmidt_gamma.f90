@@ -7,7 +7,7 @@
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nblock )
+SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nbsize )
   !--------------------------------------------------------------------------
   !
   ! ... Gram-Schmidt orthogonalization, for Gamma-only calculations.
@@ -15,7 +15,7 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nblo
   !
   USE kinds,    ONLY : DP
   USE mp,       ONLY : mp_sum
-  USE mp_bands, ONLY : intra_bgrp_comm
+  USE mp_bands, ONLY : intra_bgrp_comm, set_bgrp_indices
   !
   IMPLICIT NONE
   !
@@ -25,11 +25,13 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nblo
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
   LOGICAL,     INTENT(IN)    :: overlap
   INTEGER,     INTENT(IN)    :: gstart
-  INTEGER,     INTENT(IN)    :: nblock
+  INTEGER,     INTENT(IN)    :: nbsize
   !
   ! ... local variables
   !
   INTEGER                  :: kdim, kdmx
+  INTEGER                  :: iblock, nblock
+  INTEGER                  :: iblock_start, iblock_end
   COMPLEX(DP), ALLOCATABLE :: aux(:,:)
   REAL(DP),    ALLOCATABLE :: sr(:,:)
   !
@@ -60,15 +62,23 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nblo
      !
   END IF
   !
-  CALL mp_sum( sr , intra_bgrp_comm )
+  CALL mp_sum( sr, intra_bgrp_comm )
   !
-
+  ! ... Blocking loop
   !
-  ! TODO
-  ! TODO
-  ! TODO
+  nblock = nbnd / nbsize
+  IF ( MOD( nbnd, nbsize ) /= 0 ) nblock = nblock + 1
   !
-
+  CALL set_bgrp_indices( nblock, iblock_start, iblock_end )
+  !
+  DO iblock = 1, nblock
+     !
+     ! TODO
+     ! TODO
+     ! TODO
+     !
+  END DO
+  !
   DEALLOCATE( aux )
   DEALLOCATE( sr )
   !
