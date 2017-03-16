@@ -7,7 +7,7 @@
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, overlap )
+SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, overlap, gstart, nblock )
   !--------------------------------------------------------------------------
   !
   ! ... Gram-Schmidt orthogonalization.
@@ -20,18 +20,20 @@ SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, overlap )
   ! ... I/O variables
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
-  LOGICAL,     INTENT(IN)    :: overlap
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
+  LOGICAL,     INTENT(IN)    :: overlap
+  INTEGER,     INTENT(IN)    :: gstart
+  INTEGER,     INTENT(IN)    :: nblock
   !
   CALL start_clock( 'gsorth' )
   !
   IF ( gamma_only ) THEN
      !
-     CALL gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap )
+     CALL gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nblock )
      !
   ELSE
      !
-     CALL gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap )
+     CALL gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nblock )
      !
   END IF
   !
