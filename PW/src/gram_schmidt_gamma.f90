@@ -29,7 +29,6 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, npol, psi, overlap, gstart, nbsi
   !
   ! ... local variables
   !
-  INTEGER                  :: kdim, kdmx
   INTEGER                  :: iblock, nblock
   INTEGER                  :: iblock_start, iblock_end
   COMPLEX(DP), ALLOCATABLE :: aux(:,:)

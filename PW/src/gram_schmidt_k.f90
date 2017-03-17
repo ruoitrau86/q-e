@@ -8,6 +8,7 @@
 !
 #define ZERO ( 0._DP, 0._DP )
 #define ONE  ( 1._DP, 0._DP )
+#define MONE (-1._DP, 0._DP )
 !
 !--------------------------------------------------------------------------
 SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
@@ -16,9 +17,10 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   ! ... Gram-Schmidt orthogonalization, for k-point calculations.
   ! ... blocking algorithm is used.
   !
-  USE kinds,    ONLY : DP
-  USE mp,       ONLY : mp_sum
-  USE mp_bands, ONLY : intra_bgrp_comm, set_bgrp_indices
+  USE constants, ONLY : eps16
+  USE kinds,     ONLY : DP
+  USE mp,        ONLY : mp_sum
+  USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, my_bgrp_id, set_bgrp_indices
   !
   IMPLICIT NONE
   !
@@ -31,11 +33,15 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   !
   ! ... local variables
   !
+  INTEGER                  :: ierr
   INTEGER                  :: kdim, kdmx
   INTEGER                  :: iblock, nblock
   INTEGER                  :: iblock_start, iblock_end
-  COMPLEX(DP), ALLOCATABLE :: aux(:,:)
-  COMPLEX(DP), ALLOCATABLE :: sc(:,:)
+  INTEGER                  :: jblock_start, jblock_end
+  INTEGER                  :: ibnd_start, ibnd_end
+  INTEGER                  :: jbnd_start, jbnd_end
+  COMPLEX(DP), ALLOCATABLE :: phi(:,:), spsi(:,:)
+  INTEGER,     ALLOCATABLE :: owner_bgrp_id(:)
   !
   IF ( npol == 1 ) THEN
      !
@@ -49,45 +55,197 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
      !
   END IF
   !
-  ALLOCATE( aux( kdmx, nbnd ) )
-  ALLOCATE( sc( nbnd, nbnd ) )
-  !
-  ! ... Set up the Overlap matrix on the subspace :
-  !
-  ! ...      S_ij = <psi_i| S |psi_j>
-  !
-  IF ( overlap ) THEN
-     !
-     CALL s_psi( npwx, npw, nbnd, psi, aux )
-     !
-     CALL ZGEMM( 'C', 'N', nbnd, nbnd, kdim, ONE, psi, kdmx, aux, kdmx, ZERO, sc, nbnd )
-     !
-  ELSE
-     !
-     CALL ZGEMM( 'C', 'N', nbnd, nbnd, kdim, ONE, psi, kdmx, psi, kdmx, ZERO, sc, nbnd )
-     !
-  END IF
-  !
-  CALL mp_sum( sc, intra_bgrp_comm )
-  !
-  ! ... Blocking loop
-  !
   nblock = nbnd / nbsize
   IF ( MOD( nbnd, nbsize ) /= 0 ) nblock = nblock + 1
   !
   CALL set_bgrp_indices( nblock, iblock_start, iblock_end )
   !
+  ALLOCATE( phi ( kdmx, nbnd ) )
+  ALLOCATE( spsi( kdmx, nbnd ) )
+  ALLOCATE( owner_bgrp_id( nblock ) )
+  !
+  ! ... Set owers of blocks
+  !
+  owner_bgrp_id = 0
+  !
   DO iblock = 1, nblock
      !
-     ! TODO
-     ! TODO
-     ! TODO
+     IF ( iblock_start <= iblock .AND. iblock <= iblock_end ) &
+     owner_bgrp_id( iblock ) = my_bgrp_id
      !
   END DO
   !
-  DEALLOCATE( aux )
-  DEALLOCATE( sc )
+  CALL mp_sum( owner_bgrp_id, inter_bgrp_comm )
+  !
+  ! ... Set initial : |phi_j> = |psi_j>
+  !
+  phi = psi
+  !
+  ! ... Operate the overlap : S |psi_j>
+  !
+  IF ( overlap ) THEN
+     !
+     CALL s_psi( npwx, npw, nbnd, psi, spsi )
+     !
+  ELSE
+     !
+     spsi = psi
+     !
+  END IF
+  !
+  ! ... Blocking loop
+  !
+  DO iblock = 1, nblock
+     !
+     ! ... Orthogonalize diagonal block by standard Gram-Schmidt
+     !
+     ibnd_start = ( iblock - 1 ) * nbsize + 1
+     ibnd_end   = MIN( ibnd_start + nbsize - 1, nbnd )
+     !
+     IF ( iblock_start <= iblock .AND. iblock <= iblock_end ) &
+     CALL gram_schmidt_diag( ibnd_start, ibnd_end, ierr )
+     !
+     CALL mp_bcast( ierr, owner_bgrp_id(iblock), inter_bgrp_comm )
+     !
+     IF ( ierr /= 0 ) &
+     CALL errore( ' gram_schmidt_k ', ' cannot orthogonalize ', ABS(ierr) )
+     !
+     ! ... Bcast diagonal block
+     !
+     CALL mp_bcast( phi(:,ibnd_start:ibnd_end), owner_bgrp_id(iblock), inter_bgrp_comm )
+     !
+     ! ... Project off-diagonal block outside of diagonal block
+     !
+     jblock_start = MAX( iblock_start, iblock + 1 )
+     jblock_end   = iblock_end
+     !
+     jbnd_start = ( jblock_start - 1 ) * nbsize + 1
+     jbnd_end   = MIN( jblock_end * nbsize, nbnd )
+     !
+     IF ( jbnd_start <= jbnd_end ) &
+     CALL project_offdiag( ibnd_start, ibnd_end, jbnd_start, jbnd_end )
+     !
+  END DO
+  !
+  DEALLOCATE( phi  )
+  DEALLOCATE( spsi )
+  DEALLOCATE( owner_bgrp_id )
   !
   RETURN
+  !
+  !
+CONTAINS
+  !
+  !
+  SUBROUTINE gram_schmidt_diag( ibnd_start, ibnd_end, ierr )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER, INTENT(IN)  :: ibnd_start, ibnd_end
+    INTEGER, INTENT(OUT) :: ierr
+    !
+    INTEGER                  :: ibnd
+    COMPLEX(DP), ALLOCATABLE :: sc(:)
+    REAL(DP),    ALLOCATABLE :: sphi(:)
+    REAL(DP)                 :: pnorm
+    REAL(DP),    EXTERNAL    :: ZDOTC
+    !
+    ALLOCATE( sc( ibnd_start:ibnd_end ) )
+    ALLOCATE( sphi( kdmx ) )
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( ibnd > ibnd_start ) THEN
+          !
+          ! ... <phi_j| S |psi_i>
+          !
+          CALL ZGEMV( 'C', kdim, ibnd - ibnd_start, ONE, phi(1,ibnd_start), kdmx, &
+                      spsi(1,ibnd), 1, ZERO, sc(ibnd_start), 1 )
+          !
+          CALL mp_sum( sc, intra_bgrp_comm )
+          !
+          ! ... phi_i = phi_i - phi_j * <phi_j| S |psi_i>
+          !
+          CALL ZGEMV( 'N', kdim, ibnd - ibnd_start, MONE, phi(1,ibnd_start), kdmx, &
+                      sc(ibnd_start), 1, ONE, phi(1,ibnd), 1 )
+          !
+       END IF
+       !
+       ! ... Normalize : phi_i = phi_i / SQRT(<phi_i| S |phi_i>)
+       ! TODO
+       ! TODO change more sophisticated way
+       ! TODO
+       !
+       IF ( overlap ) THEN
+          !
+          CALL s_1psi( npwx, npw, phi(:,ibnd), sphi )
+          !
+       ELSE
+          !
+          sphi = phi(:,ibnd)
+          !
+       END IF
+       !
+       pnorm = ZDOTC( kdim, phi(1,ibnd), 1, sphi(1), 1 )
+       CALL mp_sum( pnorm, intra_bgrp_comm )
+       !
+       pnorm = SQRT( MAX( pnorm, 0.0_DP ) )
+       !
+       IF ( pnorm < eps16 ) THEN
+          !
+          ierr = 1
+          !
+          RETURN
+          !
+       END IF
+       !
+       phi(:,ibnd) = phi(:,ibnd) / pnorm
+       !
+    END DO
+    !
+    DEALLOCATE( sc )
+    DEALLOCATE( sphi )
+    !
+    ierr = 0
+    !
+    RETURN
+    !
+  END SUBROUTINE gram_schmidt_diag
+  !
+  !
+  SUBROUTINE project_offdiag( ibnd_start, ibnd_end, jbnd_start, jbnd_end )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER, INTENT(IN)  :: ibnd_start, ibnd_end
+    INTEGER, INTENT(IN)  :: jbnd_start, jbnd_end
+    !
+    INTEGER,                 :: ibnd_size
+    INTEGER,                 :: jbnd_size
+    COMPLEX(DP), ALLOCATABLE :: sc(:,:)
+    !
+    ALLOCATE( sc( ibnd_start:ibnd_end, jbnd_start:jbnd_end ) )
+    !
+    ibnd_size = ibnd_end - ibnd_start + 1
+    jbnd_size = jbnd_end - jbnd_start + 1
+    !
+    ! ... <phi_i| S |psi_j>
+    !
+    CALL ZGEMM( 'C', 'N', ibnd_size, jbnd_size, kdim, ONE, phi(1,ibnd_start), kdmx, &
+                spsi(1,jbnd_start), kdmx, ZERO, sc(ibnd_start,jbnd_start), ibnd_size )
+    !
+    CALL mp_sum( sc, intra_bgrp_comm )
+    !
+    ! ... phi_j = phi_j - phi_i * <phi_i| S |psi_j>
+    !
+    CALL ZGEMM( 'N', 'N', kdim, jbnd_size, ibnd_size, MONE, phi(1,ibnd_start), kdmx, &
+                sc(ibnd_start,jbnd_start), ibnd_size, ONE, phi(1,jbnd_start), kdmx )
+    !
+    DEALLOCATE( sc )
+    !
+    RETURN
+    !
+  END SUBROUTINE project_offdiag
+  !
   !
 END SUBROUTINE gram_schmidt_k
