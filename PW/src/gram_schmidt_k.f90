@@ -103,12 +103,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
      ibnd_end   = MIN( ibnd_start + nbsize - 1, nbnd )
      !
      IF ( iblock_start <= iblock .AND. iblock <= iblock_end ) &
-     CALL gram_schmidt_diag( ibnd_start, ibnd_end, ierr )
-     !
-     CALL mp_bcast( ierr, owner_bgrp_id(iblock), inter_bgrp_comm )
-     !
-     IF ( ierr /= 0 ) &
-     CALL errore( ' gram_schmidt_k ', ' cannot orthogonalize ', ABS(ierr) )
+     CALL gram_schmidt_diag( ibnd_start, ibnd_end )
      !
      ! ... Bcast diagonal block
      !
@@ -137,12 +132,11 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
 CONTAINS
   !
   !
-  SUBROUTINE gram_schmidt_diag( ibnd_start, ibnd_end, ierr )
+  SUBROUTINE gram_schmidt_diag( ibnd_start, ibnd_end )
     !
     IMPLICIT NONE
     !
     INTEGER, INTENT(IN)  :: ibnd_start, ibnd_end
-    INTEGER, INTENT(OUT) :: ierr
     !
     INTEGER                  :: ibnd
     COMPLEX(DP), ALLOCATABLE :: sc(:)
@@ -191,13 +185,8 @@ CONTAINS
        !
        pnorm = SQRT( MAX( pnorm, 0.0_DP ) )
        !
-       IF ( pnorm < eps16 ) THEN
-          !
-          ierr = 1
-          !
-          RETURN
-          !
-       END IF
+       IF ( pnorm < eps16 ) &
+       CALL errore( ' gram_schmidt_k ', ' cannot orthogonalize ', 1 )
        !
        phi(:,ibnd) = phi(:,ibnd) / pnorm
        !
@@ -205,8 +194,6 @@ CONTAINS
     !
     DEALLOCATE( sc )
     DEALLOCATE( sphi )
-    !
-    ierr = 0
     !
     RETURN
     !
