@@ -6,6 +6,8 @@
 ! in the root directory of the present distribution,
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
+#define ZERO ( 0.D0, 0.D0 )
+!
 !--------------------------------------------------------------------------
 SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   !--------------------------------------------------------------------------
@@ -54,6 +56,10 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   IF ( uspp ) ALLOCATE( spsi( npwx, nbnd ) )
   IF ( uspp ) ALLOCATE( sphi( npwx, nbnd ) )
   ALLOCATE( owner_bgrp_id( nblock ) )
+  !
+  phi = ZERO
+  IF ( uspp ) spsi = ZERO
+  IF ( uspp ) sphi = ZERO
   !
   ! ... Set owers of blocks
   !

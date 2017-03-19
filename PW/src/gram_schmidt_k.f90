@@ -71,6 +71,10 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   IF ( uspp ) ALLOCATE( sphi( kdmx, nbnd ) )
   ALLOCATE( owner_bgrp_id( nblock ) )
   !
+  phi = ZERO
+  IF ( uspp ) spsi = ZERO
+  IF ( uspp ) sphi = ZERO
+  !
   ! ... Set owers of blocks
   !
   owner_bgrp_id = 0
