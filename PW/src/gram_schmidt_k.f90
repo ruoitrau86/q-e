@@ -110,6 +110,9 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
      !
      CALL mp_bcast( phi(:,ibnd_start:ibnd_end), owner_bgrp_id(iblock), inter_bgrp_comm )
      !
+     IF ( uspp ) &
+     CALL mp_bcast( sphi(:,ibnd_start:ibnd_end), owner_bgrp_id(iblock), inter_bgrp_comm )
+     !
      ! ... Project off-diagonal block outside of diagonal block
      !
      jblock_start = MAX( iblock_start, iblock + 1 )
