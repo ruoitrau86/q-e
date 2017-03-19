@@ -11,7 +11,7 @@
 #define MONE (-1._DP, 0._DP )
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
+SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   !--------------------------------------------------------------------------
   !
   ! ... Gram-Schmidt orthogonalization, for k-point calculations.
@@ -19,7 +19,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   !
   USE constants, ONLY : eps16
   USE kinds,     ONLY : DP
-  USE mp,        ONLY : mp_sum
+  USE mp,        ONLY : mp_sum, mp_max
   USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, my_bgrp_id, set_bgrp_indices
   !
   IMPLICIT NONE
@@ -28,19 +28,18 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
-  LOGICAL,     INTENT(IN)    :: overlap
+  LOGICAL,     INTENT(IN)    :: uspp
   INTEGER,     INTENT(IN)    :: nbsize
   !
   ! ... local variables
   !
-  INTEGER                  :: ierr
   INTEGER                  :: kdim, kdmx
   INTEGER                  :: iblock, nblock
   INTEGER                  :: iblock_start, iblock_end
   INTEGER                  :: jblock_start, jblock_end
   INTEGER                  :: ibnd_start, ibnd_end
   INTEGER                  :: jbnd_start, jbnd_end
-  COMPLEX(DP), ALLOCATABLE :: phi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: phi(:,:), spsi(:,:), sphi(:,:)
   INTEGER,     ALLOCATABLE :: owner_bgrp_id(:)
   !
   IF ( npol == 1 ) THEN
@@ -60,8 +59,16 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   !
   CALL set_bgrp_indices( nblock, iblock_start, iblock_end )
   !
+  IF ( my_bgrp_id >= nblock ) THEN
+     !
+     iblock_start = nblock + 1
+     iblock_end   = nblock
+     !
+  END IF
+  !
   ALLOCATE( phi ( kdmx, nbnd ) )
-  ALLOCATE( spsi( kdmx, nbnd ) )
+  IF ( uspp ) ALLOCATE( spsi( kdmx, nbnd ) )
+  IF ( uspp ) ALLOCATE( sphi( kdmx, nbnd ) )
   ALLOCATE( owner_bgrp_id( nblock ) )
   !
   ! ... Set owers of blocks
@@ -71,27 +78,21 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
   DO iblock = 1, nblock
      !
      IF ( iblock_start <= iblock .AND. iblock <= iblock_end ) &
-     owner_bgrp_id( iblock ) = my_bgrp_id
+     owner_bgrp_id(iblock) = my_bgrp_id
      !
   END DO
   !
-  CALL mp_sum( owner_bgrp_id, inter_bgrp_comm )
+  CALL mp_max( owner_bgrp_id, inter_bgrp_comm )
+  !
+  ! ... Operate the overlap : S |psi_j>
+  !
+  IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
   !
   ! ... Set initial : |phi_j> = |psi_j>
   !
   phi = psi
   !
-  ! ... Operate the overlap : S |psi_j>
-  !
-  IF ( overlap ) THEN
-     !
-     CALL s_psi( npwx, npw, nbnd, psi, spsi )
-     !
-  ELSE
-     !
-     spsi = psi
-     !
-  END IF
+  IF ( uspp ) sphi = spsi
   !
   ! ... Blocking loop
   !
@@ -100,9 +101,9 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
      ! ... Orthogonalize diagonal block by standard Gram-Schmidt
      !
      ibnd_start = ( iblock - 1 ) * nbsize + 1
-     ibnd_end   = MIN( ibnd_start + nbsize - 1, nbnd )
+     ibnd_end   = MIN( iblock * nbsize, nbnd )
      !
-     IF ( iblock_start <= iblock .AND. iblock <= iblock_end ) &
+     IF ( owner_bgrp_id(iblock) == my_bgrp_id ) &
      CALL gram_schmidt_diag( ibnd_start, ibnd_end )
      !
      ! ... Bcast diagonal block
@@ -117,13 +118,14 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, overlap, nbsize )
      jbnd_start = ( jblock_start - 1 ) * nbsize + 1
      jbnd_end   = MIN( jblock_end * nbsize, nbnd )
      !
-     IF ( jbnd_start <= jbnd_end ) &
+     IF ( jblock_start <= jblock_end .AND. jbnd_start <= jbnd_end ) &
      CALL project_offdiag( ibnd_start, ibnd_end, jbnd_start, jbnd_end )
      !
   END DO
   !
   DEALLOCATE( phi  )
-  DEALLOCATE( spsi )
+  IF ( uspp ) DEALLOCATE( spsi )
+  IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( owner_bgrp_id )
   !
   RETURN
@@ -140,12 +142,10 @@ CONTAINS
     !
     INTEGER                  :: ibnd
     COMPLEX(DP), ALLOCATABLE :: sc(:)
-    REAL(DP),    ALLOCATABLE :: sphi(:)
-    REAL(DP)                 :: pnorm
+    REAL(DP)                 :: norm
     REAL(DP),    EXTERNAL    :: ZDOTC
     !
     ALLOCATE( sc( ibnd_start:ibnd_end ) )
-    ALLOCATE( sphi( kdmx ) )
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -153,8 +153,17 @@ CONTAINS
           !
           ! ... <phi_j| S |psi_i>
           !
-          CALL ZGEMV( 'C', kdim, ibnd - ibnd_start, ONE, phi(1,ibnd_start), kdmx, &
-                      spsi(1,ibnd), 1, ZERO, sc(ibnd_start), 1 )
+          IF ( uspp ) THEN
+             !
+             CALL ZGEMV( 'C', kdim, ibnd - ibnd_start, ONE, phi(1,ibnd_start), kdmx, &
+                         spsi(1,ibnd), 1, ZERO, sc(ibnd_start), 1 )
+             !
+          ELSE
+             !
+             CALL ZGEMV( 'C', kdim, ibnd - ibnd_start, ONE, phi(1,ibnd_start), kdmx, &
+                         psi(1,ibnd), 1, ZERO, sc(ibnd_start), 1 )
+             !
+          END IF
           !
           CALL mp_sum( sc, intra_bgrp_comm )
           !
@@ -163,37 +172,39 @@ CONTAINS
           CALL ZGEMV( 'N', kdim, ibnd - ibnd_start, MONE, phi(1,ibnd_start), kdmx, &
                       sc(ibnd_start), 1, ONE, phi(1,ibnd), 1 )
           !
+          IF ( uspp ) &
+          CALL ZGEMV( 'N', kdim, ibnd - ibnd_start, MONE, sphi(1,ibnd_start), kdmx, &
+                      sc(ibnd_start), 1, ONE, sphi(1,ibnd), 1 )
+          !
        END IF
        !
        ! ... Normalize : phi_i = phi_i / SQRT(<phi_i| S |phi_i>)
-       ! TODO
-       ! TODO change more sophisticated way
-       ! TODO
        !
-       IF ( overlap ) THEN
+       IF ( uspp ) THEN
           !
-          CALL s_1psi( npwx, npw, phi(:,ibnd), sphi )
+          norm = ZDOTC( kdim, phi(1,ibnd), 1, sphi(1,ibnd), 1 )
           !
        ELSE
           !
-          sphi = phi(:,ibnd)
+          norm = ZDOTC( kdim, phi(1,ibnd), 1, phi(1,ibnd), 1 )
           !
        END IF
        !
-       pnorm = ZDOTC( kdim, phi(1,ibnd), 1, sphi(1), 1 )
-       CALL mp_sum( pnorm, intra_bgrp_comm )
+       CALL mp_sum( norm, intra_bgrp_comm )
        !
-       pnorm = SQRT( MAX( pnorm, 0.0_DP ) )
+       norm = SQRT( MAX( norm, 0.0_DP ) )
        !
-       IF ( pnorm < eps16 ) &
-       CALL errore( ' gram_schmidt_k ', ' cannot orthogonalize ', 1 )
+       IF ( norm < eps16 ) &
+       CALL errore( ' gram_schmidt_k ', ' vectors are linear dependent ', 1 )
        !
-       phi(:,ibnd) = phi(:,ibnd) / pnorm
+       phi(:,ibnd) = phi(:,ibnd) / norm
+       !
+       IF ( uspp ) &
+       sphi(:,ibnd) = sphi(:,ibnd) / norm
        !
     END DO
     !
     DEALLOCATE( sc )
-    DEALLOCATE( sphi )
     !
     RETURN
     !
@@ -211,15 +222,24 @@ CONTAINS
     INTEGER,                 :: jbnd_size
     COMPLEX(DP), ALLOCATABLE :: sc(:,:)
     !
-    ALLOCATE( sc( ibnd_start:ibnd_end, jbnd_start:jbnd_end ) )
-    !
     ibnd_size = ibnd_end - ibnd_start + 1
     jbnd_size = jbnd_end - jbnd_start + 1
     !
+    ALLOCATE( sc( ibnd_start:ibnd_end, jbnd_start:jbnd_end ) )
+    !
     ! ... <phi_i| S |psi_j>
     !
-    CALL ZGEMM( 'C', 'N', ibnd_size, jbnd_size, kdim, ONE, phi(1,ibnd_start), kdmx, &
-                spsi(1,jbnd_start), kdmx, ZERO, sc(ibnd_start,jbnd_start), ibnd_size )
+    IF ( uspp ) THEN
+       !
+       CALL ZGEMM( 'C', 'N', ibnd_size, jbnd_size, kdim, ONE, phi(1,ibnd_start), kdmx, &
+                   spsi(1,jbnd_start), kdmx, ZERO, sc(ibnd_start,jbnd_start), ibnd_size )
+       !
+    ELSE
+       !
+       CALL ZGEMM( 'C', 'N', ibnd_size, jbnd_size, kdim, ONE, phi(1,ibnd_start), kdmx, &
+                   psi(1,jbnd_start), kdmx, ZERO, sc(ibnd_start,jbnd_start), ibnd_size )
+       !
+    END IF
     !
     CALL mp_sum( sc, intra_bgrp_comm )
     !
@@ -227,6 +247,10 @@ CONTAINS
     !
     CALL ZGEMM( 'N', 'N', kdim, jbnd_size, ibnd_size, MONE, phi(1,ibnd_start), kdmx, &
                 sc(ibnd_start,jbnd_start), ibnd_size, ONE, phi(1,jbnd_start), kdmx )
+    !
+    IF ( uspp ) &
+    CALL ZGEMM( 'N', 'N', kdim, jbnd_size, ibnd_size, MONE, sphi(1,ibnd_start), kdmx, &
+                sc(ibnd_start,jbnd_start), ibnd_size, ONE, sphi(1,jbnd_start), kdmx )
     !
     DEALLOCATE( sc )
     !
