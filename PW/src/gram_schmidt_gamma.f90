@@ -17,7 +17,7 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   !
   USE constants, ONLY : eps16
   USE kinds,     ONLY : DP
-  USE mp,        ONLY : mp_sum, mp_max
+  USE mp,        ONLY : mp_sum, mp_max, mp_bcast
   USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, my_bgrp_id, set_bgrp_indices
   !
   IMPLICIT NONE

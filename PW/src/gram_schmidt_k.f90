@@ -19,7 +19,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   !
   USE constants, ONLY : eps16
   USE kinds,     ONLY : DP
-  USE mp,        ONLY : mp_sum, mp_max
+  USE mp,        ONLY : mp_sum, mp_max, mp_bcast
   USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, my_bgrp_id, set_bgrp_indices
   !
   IMPLICIT NONE
