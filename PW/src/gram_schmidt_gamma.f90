@@ -92,7 +92,6 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
      !
   END IF
   !
-  !
   ! ... Blocking loop
   !
   DO iblock = 1, nblock
@@ -124,6 +123,10 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
      CALL project_offdiag( ibnd_start, ibnd_end, jbnd_start, jbnd_end )
      !
   END DO
+  !
+  ! ... Copy psi <- phi
+  !
+  psi = phi
   !
   DEALLOCATE( phi )
   IF ( uspp ) DEALLOCATE( spsi )

@@ -126,7 +126,11 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
      !
   END DO
   !
-  DEALLOCATE( phi  )
+  ! ... Copy psi <- phi
+  !
+  psi = phi
+  !
+  DEALLOCATE( phi )
   IF ( uspp ) DEALLOCATE( spsi )
   IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( owner_bgrp_id )
