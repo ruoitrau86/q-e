@@ -7,6 +7,7 @@
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
 #define ZERO ( 0._DP, 0._DP )
+#define ONE  ( 1._DP, 0._DP )
 !
 !----------------------------------------------------------------------------
 SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
@@ -47,7 +48,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   COMPLEX(DP), ALLOCATABLE :: dpsi(:,:), hpsi(:,:), spsi(:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
   LOGICAL,     ALLOCATABLE :: conv(:)
-  REAL(DP),    ALLOCATABLE :: hc(:,:), sc(:,:), vc(:,:)
+  REAL(DP),    ALLOCATABLE :: hc(:,:,:), sc(:,:,:)
   !
   CALL start_clock( 'crmmdiagg' )
   !
@@ -82,9 +83,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ALLOCATE( sw( nbnd ) )
   ALLOCATE( conv( nbnd ) )
   !
-  ALLOCATE( hc( ndiis, ndiis ) )
-  ALLOCATE( sc( ndiis, ndiis ) )
-  ALLOCATE( vc( ndiis, ndiis ) )
+  ALLOCATE( hc( ndiis, ndiis, ibnd_start:ibnd_end ) )
+  ALLOCATE( sc( ndiis, ndiis, ibnd_start:ibnd_end ) )
   !
   phi  = ZERO
   dphi = ZERO
@@ -125,7 +125,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
      ! ... Perform DIIS
      !
-     IF ( idiis > 1 ) CALL do_diis( )
+     CALL do_diis( idiis )
      !
      ! ... Line searching
      !
@@ -154,7 +154,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   DEALLOCATE( conv )
   DEALLOCATE( hc )
   DEALLOCATE( sc )
-  DEALLOCATE( vc )
   !
   CALL stop_clock( 'crmmdiagg' )
   !
@@ -174,12 +173,12 @@ CONTAINS
     !
     IF ( uspp ) THEN
        !
-       FORALL ( ibnd = 1:nbnd ) &
+       FORALL ( ibnd = ibnd_start:ibnd_end ) &
        dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * spsi(:,ibnd)
        !
     ELSE
        !
-       FORALL ( ibnd = 1:nbnd ) &
+       FORALL ( ibnd = ibnd_start:ibnd_end ) &
        dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * psi(:,ibnd)
        !
     END IF
@@ -189,16 +188,49 @@ CONTAINS
   END SUBROUTINE residuals
   !
   !
-  SUBROUTINE do_diis( )
+  SUBROUTINE do_diis( kdiis )
     !
     IMPLICIT NONE
     !
-    INTEGER  :: ibnd
+    INTEGER, INTENT(IN) :: kdiis
+    !
+    INTEGER :: ibnd
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       ! ... <R_i|R_j>
+       !
+       CALL ZGEMV( 'C', kdim, kdiis, ONE, dphi(1,ibnd,1), kdmx, &
+                   dphi(1,ibnd,kdiis), 1, ZERO, hc(1,kdiis,ibnd), 1 )
+       !
+       CALL mp_sum( hc(:,:,ibnd), intra_bgrp_comm )
+       !
+       hc(kdiis,kdiis,ibnd) = CMPLX( DBLE( hc(kdiis,kdiis,ibnd), 0._DP, kind=DP )
+       hc(kdiis,1:kdiis,ibnd) = CONJG( hc(1:kdiis,kdiis,ibnd) )
+       !
+       ! ... <phi_i| S |phi_j>
+       !
+       IF ( uspp ) THEN
+          !
+          CALL ZGEMV( 'C', kdim, kdiis, ONE, phi(1,ibnd,1), kdmx, &
+                      sphi(1,ibnd,kdiis), 1, ZERO, sc(1,kdiis,ibnd), 1 )
+          !
+       ELSE
+          !
+          CALL ZGEMV( 'C', kdim, kdiis, ONE, phi(1,ibnd,1), kdmx, &
+                      phi(1,ibnd,kdiis), 1, ZERO, sc(1,kdiis,ibnd), 1 )
+          !
+       END IF
+       !
+       CALL mp_sum( sc(:,:,ibnd), intra_bgrp_comm )
+       !
+       sc(kdiis,kdiis,ibnd) = CMPLX( DBLE( sc(kdiis,kdiis,ibnd), 0._DP, kind=DP )
+       sc(kdiis,1:kdiis,ibnd) = CONJG( sc(1:kdiis,kdiis,ibnd) )
+       !
+       IF ( kdiis == 1 ) CYCLE
+       !
        ! TODO
-       ! TODO
+       ! TODO solve only for root
        ! TODO
        !
     END DO
@@ -212,7 +244,7 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER  :: ibnd
+    INTEGER :: ibnd
     !
     DO ibnd = ibnd_start, ibnd_end
        !
