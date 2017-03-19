@@ -19,8 +19,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   USE constants, ONLY : eps14
   USE kinds,     ONLY : DP
   USE mp,        ONLY : mp_sum, mp_bcast
-  USE mp_bands,  ONLY : intra_bgrp_comm
-    CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm)
+  USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, root_bgrp_id, set_bgrp_indices
   !
   IMPLICIT NONE
   !
@@ -41,7 +40,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ! ... local variables
   !
   INTEGER                  :: ierr
-  INTEGER                  :: idiis, ibnd
+  INTEGER                  :: idiis
+  INTEGER                  :: ibnd_start, ibnd_end
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), dphi(:,:,:)
   COMPLEX(DP), ALLOCATABLE :: dpsi(:,:), hpsi(:,:), spsi(:,:)
@@ -64,6 +64,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      kdmx = npwx * npol
      !
   END IF
+  !
+  CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
   !
   ALLOCATE( phi( kdmx, nbnd, ndiis ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ',' cannot allocate phi ', ABS(ierr) )
@@ -112,19 +114,9 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
      rmm_iter = rmm_iter + 1
      !
-     ! ... Residual vector : |R> = (H - e S) |psi>
+     ! ... Residual vectors : |R> = (H - e S) |psi>
      !
-     IF ( uspp ) THEN
-        !
-        FORALL ( ibnd = 1:nbnd ) &
-        dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * spsi(:,ibnd)
-        !
-     ELSE
-        !
-        FORALL ( ibnd = 1:nbnd ) &
-        dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * psi(:,ibnd)
-        !
-     END IF
+     CALL residuals( )
      !
      ! ... Save current wave functions and residual vectors
      !
@@ -133,23 +125,11 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
      ! ... Perform DIIS
      !
-     IF ( idiis > 1 ) THEN
-        !
-        ! TODO
-        ! TODO phi, dphi -> psi, dpsi
-        ! TODO
-        !
-     END IF
+     IF ( idiis > 1 ) CALL do_diis( )
      !
      ! ... Line searching
      !
-     DO ibnd = 1, nbnd
-        !
-        ! TODO
-        ! TODO |psi> = |psi> + s * precondition |dpsi>
-        ! TODO
-        !
-     END DO
+     CALL line_search( )
      !
      ! ... Calculate eigenvalues and check convergence
      !
@@ -161,13 +141,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   ! ... Sort eigenvalues and eigenvectors
   !
-  IF ( reorder ) THEN
-     !
-     ! TODO
-     ! TODO
-     ! TODO
-     !
-  END IF
+  IF ( reorder ) CALL sort_vectors( )
   !
   DEALLOCATE( phi )
   DEALLOCATE( dphi )
@@ -190,12 +164,74 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
 CONTAINS
   !
   !
+  SUBROUTINE residuals( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER  :: ibnd
+    !
+    ! ... |R> = (H - e S) |psi>
+    !
+    IF ( uspp ) THEN
+       !
+       FORALL ( ibnd = 1:nbnd ) &
+       dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * spsi(:,ibnd)
+       !
+    ELSE
+       !
+       FORALL ( ibnd = 1:nbnd ) &
+       dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * psi(:,ibnd)
+       !
+    END IF
+    !
+    RETURN
+    !
+  END SUBROUTINE residuals
+  !
+  !
+  SUBROUTINE do_diis( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER  :: ibnd
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       ! TODO
+       ! TODO
+       ! TODO
+       !
+    END DO
+    !
+    RETURN
+    !
+  END SUBROUTINE do_diis
+  !
+  !
+  SUBROUTINE line_search( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER  :: ibnd
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       ! TODO
+       ! TODO |psi> = |psi> + s * precondition |dpsi>
+       ! TODO
+       !
+    END DO
+    !
+    RETURN
+    !
+  END SUBROUTINE line_search
+  !
+  !
   SUBROUTINE eigenvalues( )
     !
     IMPLICIT NONE
     !
     INTEGER            :: ibnd
-    REAL(DP)           :: h, s
     REAL(DP), EXTERNAL :: ZDOTC
     !
     ! ... Operate the Hamiltonian : H |psi>
@@ -208,26 +244,29 @@ CONTAINS
     !
     ! ... Eigenvalues
     !
-    FORALL ( ibnd = 1:nbnd ) &
+    FORALL ( ibnd = ibnd_start:ibnd_end ) &
     hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
     !
     CALL mp_sum( hw, intra_bgrp_comm )
     !
     IF ( uspp ) THEN
        !
-       FORALL ( ibnd = 1:nbnd ) &
+       FORALL ( ibnd = ibnd_start:ibnd_end ) &
        sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
        !
     ELSE
        !
-       FORALL ( ibnd = 1:nbnd ) &
+       FORALL ( ibnd = ibnd_start:ibnd_end ) &
        sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 )
        !
     END IF
     !
     CALL mp_sum( sw, intra_bgrp_comm )
     !
-    ew(:) = hw(:) / sw(:)
+    ew(:) = 0.0_DP
+    ew(ibnd_start:ibnd_end) = hw(ibnd_start:ibnd_end) / sw(ibnd_start:ibnd_end)
+    !
+    CALL mp_sum( ew, inter_bgrp_comm )
     !
     ! ... Check convergence
     !
@@ -241,7 +280,7 @@ CONTAINS
        !
     END WHERE
     !
-    CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm)
+    CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm )
     !
     notconv = COUNT( .NOT. conv(:) )
     !
@@ -250,6 +289,21 @@ CONTAINS
     RETURN
     !
   END SUBROUTINE eigenvalues
+  !
+  !
+  SUBROUTINE sort_vectors( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER  :: ibnd
+    !
+    ! TODO
+    ! TODO
+    ! TODO
+    !
+    RETURN
+    !
+  END SUBROUTINE sort_vectors
   !
   !
 END SUBROUTINE crmmdiagg
