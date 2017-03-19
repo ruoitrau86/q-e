@@ -259,8 +259,8 @@ CONTAINS
     INTEGER, INTENT(IN)  :: ibnd_start, ibnd_end
     INTEGER, INTENT(IN)  :: jbnd_start, jbnd_end
     !
-    INTEGER,              :: ibnd_size
-    INTEGER,              :: jbnd_size
+    INTEGER               :: ibnd_size
+    INTEGER               :: jbnd_size
     REAL(DP), ALLOCATABLE :: sr(:,:)
     !
     ibnd_size = ibnd_end - ibnd_start + 1
