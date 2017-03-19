@@ -7,7 +7,6 @@
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
 #define ZERO ( 0._DP, 0._DP )
-#define ONE  ( 1._DP, 0._DP )
 !
 !----------------------------------------------------------------------------
 SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
@@ -17,10 +16,11 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ! ... Iterative diagonalization of a complex hermitian matrix
   ! ... through preconditioned RMM-DIIS algorithm.
   !
-  USE constants,        ONLY : pi
-  USE kinds,            ONLY : DP
-  USE mp_bands,         ONLY : intra_bgrp_comm
-  USE mp,               ONLY : mp_sum
+  USE constants, ONLY : eps14
+  USE kinds,     ONLY : DP
+  USE mp,        ONLY : mp_sum, mp_bcast
+  USE mp_bands,  ONLY : intra_bgrp_comm
+    CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm)
   !
   IMPLICIT NONE
   !
@@ -45,6 +45,9 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), dphi(:,:,:)
   COMPLEX(DP), ALLOCATABLE :: dpsi(:,:), hpsi(:,:), spsi(:,:)
+  REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
+  LOGICAL,     ALLOCATABLE :: conv(:)
+  REAL(DP),    ALLOCATABLE :: hc(:,:), sc(:,:), vc(:,:)
   !
   CALL start_clock( 'crmmdiagg' )
   !
@@ -72,20 +75,42 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ALLOCATE( hpsi( kdmx, nbnd ) )
   IF ( uspp ) ALLOCATE( spsi( kdmx, nbnd ) )
   !
+  ALLOCATE( ew( nbnd ) )
+  ALLOCATE( hw( nbnd ) )
+  ALLOCATE( sw( nbnd ) )
+  ALLOCATE( conv( nbnd ) )
+  !
+  ALLOCATE( hc( ndiis, ndiis ) )
+  ALLOCATE( sc( ndiis, ndiis ) )
+  ALLOCATE( vc( ndiis, ndiis ) )
+  !
+  phi  = ZERO
+  dphi = ZERO
+  !
+  dpsi = ZERO
+  hpsi = ZERO
+  IF ( uspp ) spsi = ZERO
+  !
+  ew   = 0.0_DP
+  hw   = 0.0_DP
+  sw   = 0.0_DP
+  conv = .FALSE.
+  !
+  hc   = ZERO
+  sc   = ZERO
+  vc   = ZERO
+  !
+  ! ... Initial eigenvalues
+  !
+  CALL eigenvalues( )
+  !
+  ! ... RMM-DIIS's loop
+  !
   rmm_iter = 0
-  notconv  = 0
   !
   DO idiis = 1, ndiis
      !
      rmm_iter = rmm_iter + 1
-     !
-     ! ... Operate the Hamiltonian : H |psi>
-     !
-     CALL h_psi( npwx, npw, nbnd, psi, hpsi )
-     !
-     ! ... Operate the Overlap : S |psi>
-     !
-     IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
      !
      ! ... Residual vector : |R> = (H - e S) |psi>
      !
@@ -126,17 +151,11 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
         !
      END DO
      !
-     ! ... Eigenvalues
+     ! ... Calculate eigenvalues and check convergence
      !
-     ! TODO
-     ! TODO
-     ! TODO
+     CALL eigenvalues( )
      !
-     ! ... Check convergence
-     !
-     ! TODO
-     ! TODO
-     ! TODO
+     IF ( notconv == 0 ) EXIT
      !
   END DO
   !
@@ -155,9 +174,82 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   DEALLOCATE( dpsi )
   DEALLOCATE( hpsi )
   IF ( uspp ) DEALLOCATE( spsi )
+  DEALLOCATE( ew )
+  DEALLOCATE( hw )
+  DEALLOCATE( sw )
+  DEALLOCATE( conv )
+  DEALLOCATE( hc )
+  DEALLOCATE( sc )
+  DEALLOCATE( vc )
   !
   CALL stop_clock( 'crmmdiagg' )
   !
   RETURN
+  !
+  !
+CONTAINS
+  !
+  !
+  SUBROUTINE eigenvalues( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER            :: ibnd
+    REAL(DP)           :: h, s
+    REAL(DP), EXTERNAL :: ZDOTC
+    !
+    ! ... Operate the Hamiltonian : H |psi>
+    !
+    CALL h_psi( npwx, npw, nbnd, psi, hpsi )
+    !
+    ! ... Operate the Overlap : S |psi>
+    !
+    IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
+    !
+    ! ... Eigenvalues
+    !
+    FORALL ( ibnd = 1:nbnd ) &
+    hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+    !
+    CALL mp_sum( hw, intra_bgrp_comm )
+    !
+    IF ( uspp ) THEN
+       !
+       FORALL ( ibnd = 1:nbnd ) &
+       sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
+       !
+    ELSE
+       !
+       FORALL ( ibnd = 1:nbnd ) &
+       sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 )
+       !
+    END IF
+    !
+    CALL mp_sum( sw, intra_bgrp_comm )
+    !
+    ew(:) = hw(:) / sw(:)
+    !
+    ! ... Check convergence
+    !
+    WHERE( btype(:) == 1 )
+       !
+       conv(:) = ( ( ABS( ew(:) - e(:) ) < ethr ) )
+       !
+    ELSEWHERE
+       !
+       conv(:) = ( ( ABS( ew(:) - e(:) ) < empty_ethr ) )
+       !
+    END WHERE
+    !
+    CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm)
+    !
+    notconv = COUNT( .NOT. conv(:) )
+    !
+    e(:) = ew(:)
+    !
+    RETURN
+    !
+  END SUBROUTINE eigenvalues
+  !
   !
 END SUBROUTINE crmmdiagg
