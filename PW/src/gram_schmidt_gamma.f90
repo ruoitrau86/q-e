@@ -80,7 +80,18 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   !
   phi = psi
   !
-  IF ( uspp ) sphi = spsi
+  ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
+  IF ( gstart == 2 ) phi(1,1:nbnd) = CMPLX( DBLE( phi(1,1:nbnd) ), 0._DP, kind=DP )
+  !
+  IF ( uspp ) THEN
+     !
+     sphi = spsi
+     !
+     ! NOTE: set Im[ S*phi(G=0) ] - needed for numerical stability
+     IF ( gstart == 2 ) sphi(1,1:nbnd) = CMPLX( DBLE( sphi(1,1:nbnd) ), 0._DP, kind=DP )
+     !
+  END IF
+  !
   !
   ! ... Blocking loop
   !
@@ -114,7 +125,7 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
      !
   END DO
   !
-  DEALLOCATE( phi  )
+  DEALLOCATE( phi )
   IF ( uspp ) DEALLOCATE( spsi )
   IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( owner_bgrp_id )
@@ -146,13 +157,21 @@ CONTAINS
           !
           IF ( uspp ) THEN
              !
-             CALL DGEMV( 'T', 2 * npw, ibnd - ibnd_start, 1._DP, phi(1,ibnd_start), 2 * npwx, &
+             CALL DGEMV( 'T', 2 * npw, ibnd - ibnd_start, 2._DP, phi(1,ibnd_start), 2 * npwx, &
                          spsi(1,ibnd), 1, 0._DP, sr(ibnd_start), 1 )
+             !
+             IF ( gstart == 2 ) &
+             CALL DAXPY( ibnd - ibnd_start, -spsi(1,ibnd), phi(1,ibnd_start), 2 * npwx, &
+                         sr(ibnd_start), 1 )
              !
           ELSE
              !
-             CALL DGEMV( 'T', 2 * npw, ibnd - ibnd_start, 1._DP, phi(1,ibnd_start), 2 * npwx, &
+             CALL DGEMV( 'T', 2 * npw, ibnd - ibnd_start, 2._DP, phi(1,ibnd_start), 2 * npwx, &
                          psi(1,ibnd), 1, 0._DP, sr(ibnd_start), 1 )
+             !
+             IF ( gstart == 2 ) &
+             CALL DAXPY( ibnd - ibnd_start, -psi(1,ibnd), phi(1,ibnd_start), 2 * npwx, &
+                         sr(ibnd_start), 1 )
              !
           END IF
           !
@@ -163,9 +182,18 @@ CONTAINS
           CALL DGEMV( 'N', 2 * npw, ibnd - ibnd_start, -1._DP, phi(1,ibnd_start), 2 * npwx, &
                       sr(ibnd_start), 1, 1._DP, phi(1,ibnd), 1 )
           !
-          IF ( uspp ) &
-          CALL DGEMV( 'N', 2 * npw, ibnd - ibnd_start, -1._DP, sphi(1,ibnd_start), 2 * npwx, &
-                      sr(ibnd_start), 1, 1._DP, sphi(1,ibnd), 1 )
+          ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
+          IF ( gstart == 2 ) phi(1,ibnd) = CMPLX( DBLE( phi(1,ibnd) ), 0._DP, kind=DP )
+          !
+          IF ( uspp ) THEN
+             !
+             CALL DGEMV( 'N', 2 * npw, ibnd - ibnd_start, -1._DP, sphi(1,ibnd_start), 2 * npwx, &
+                         sr(ibnd_start), 1, 1._DP, sphi(1,ibnd), 1 )
+             !
+             ! NOTE: set Im[ S*phi(G=0) ] - needed for numerical stability
+             IF ( gstart == 2 ) sphi(1,ibnd) = CMPLX( DBLE( sphi(1,ibnd) ), 0._DP, kind=DP )
+             !
+          END IF
           !
        END IF
        !
@@ -173,11 +201,15 @@ CONTAINS
        !
        IF ( uspp ) THEN
           !
-          norm = DDOT( 2 * npw, phi(1,ibnd), 1, sphi(1,ibnd), 1 )
+          norm = 2.0_DP * DDOT( 2 * npw, phi(1,ibnd), 1, sphi(1,ibnd), 1 )
+          !
+          IF ( gstart == 2 ) norm = norm - DBLE( phi(1,ibnd) ) * DBLE ( sphi(1,ibnd) )
           !
        ELSE
           !
-          norm = DDOT( 2 * npw, phi(1,ibnd), 1, phi(1,ibnd), 1 )
+          norm = 2.0_DP * DDOT( 2 * npw, phi(1,ibnd), 1, phi(1,ibnd), 1 )
+          !
+          IF ( gstart == 2 ) norm = norm - DBLE( phi(1,ibnd) ) * DBLE ( phi(1,ibnd) )
           !
        END IF
        !
@@ -190,8 +222,17 @@ CONTAINS
        !
        phi(:,ibnd) = phi(:,ibnd) / norm
        !
-       IF ( uspp ) &
-       sphi(:,ibnd) = sphi(:,ibnd) / norm
+       ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
+       IF ( gstart == 2 ) phi(1,ibnd) = CMPLX( DBLE( phi(1,ibnd) ), 0._DP, kind=DP )
+       !
+       IF ( uspp ) THEN
+          !
+          sphi(:,ibnd) = sphi(:,ibnd) / norm
+          !
+          ! NOTE: set Im[ S*phi(G=0) ] - needed for numerical stability
+          IF ( gstart == 2 ) sphi(1,ibnd) = CMPLX( DBLE( sphi(1,ibnd) ), 0._DP, kind=DP )
+          !
+       END IF
        !
     END DO
     !
@@ -225,10 +266,18 @@ CONTAINS
        CALL DGEMM( 'T', 'N', ibnd_size, jbnd_size, 2 * npw, 2._DP, phi(1,ibnd_start), 2 * npwx, &
                    spsi(1,jbnd_start), 2 * npwx, 0._DP, sr(ibnd_start,jbnd_start), ibnd_size )
        !
+       IF ( gstart == 2 ) &
+       CALL DGER( ibnd_size, jbnd_size, -1._DP, psi(1,ibnd_start), 2 * npwx, &
+                  spsi(1,jbnd_start), 2 * npwx, sr(ibnd_start,jbnd_start), ibnd_size )
+       !
     ELSE
        !
        CALL DGEMM( 'T', 'N', ibnd_size, jbnd_size, 2 * npw, 2._DP, phi(1,ibnd_start), 2 * npwx, &
                    psi(1,jbnd_start), 2 * npwx, 0._DP, sr(ibnd_start,jbnd_start), ibnd_size )
+       !
+       IF ( gstart == 2 ) &
+       CALL DGER( ibnd_size, jbnd_size, -1._DP, psi(1,ibnd_start), 2 * npwx, &
+                  psi(1,jbnd_start), 2 * npwx, sr(ibnd_start,jbnd_start), ibnd_size )
        !
     END IF
     !
@@ -239,9 +288,20 @@ CONTAINS
     CALL DGEMM( 'N', 'N', 2 * npw, jbnd_size, ibnd_size, -1._DP, phi(1,ibnd_start), 2 * npwx, &
                 sr(ibnd_start,jbnd_start), ibnd_size, 1._DP, phi(1,jbnd_start), 2 * npwx )
     !
-    IF ( uspp ) &
-    CALL DGEMM( 'N', 'N', 2 * npw, jbnd_size, ibnd_size, -1._DP, sphi(1,ibnd_start), 2 * npwx, &
-                sr(ibnd_start,jbnd_start), ibnd_size, 1._DP, sphi(1,jbnd_start), 2 * npwx )
+    ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
+    IF ( gstart == 2 ) phi(1,jbnd_start:jbnd_end) = &
+                       CMPLX( DBLE( phi(1,jbnd_start:jbnd_end) ), 0._DP, kind=DP )
+    !
+    IF ( uspp ) THEN
+       !
+       CALL DGEMM( 'N', 'N', 2 * npw, jbnd_size, ibnd_size, -1._DP, sphi(1,ibnd_start), 2 * npwx, &
+                   sr(ibnd_start,jbnd_start), ibnd_size, 1._DP, sphi(1,jbnd_start), 2 * npwx )
+       !
+       ! NOTE: set Im[ S*phi(G=0) ] - needed for numerical stability
+       IF ( gstart == 2 ) sphi(1,jbnd_start:jbnd_end) = &
+                          CMPLX( DBLE( sphi(1,jbnd_start:jbnd_end) ), 0._DP, kind=DP )
+       !
+    END IF
     !
     DEALLOCATE( sr )
     !
