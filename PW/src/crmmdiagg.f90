@@ -717,11 +717,36 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER  :: ibnd
+    INTEGER                  :: ibnd
+    INTEGER                  :: nswap
+    REAL(DP)                 :: e0
+    COMPLEX(DP), ALLOCATABLE :: psi0(:)
     !
-    ! TODO
-    ! TODO
-    ! TODO
+    ALLOCATE( psi0( kdmx ) )
+    !
+20  nswap = 0
+    !
+    DO ibnd = 2, nbnd
+       !
+       IF ( e(ibnd) < e(ibnd-1) ) THEN
+          !
+          nswap = nswap + 1
+          !
+          e0        = e(ibnd)
+          e(ibnd)   = e(ibnd-1)
+          e(ibnd-1) = e0
+          !
+          psi0(:)       = psi(:,ibnd)
+          psi(:,ibnd)   = psi(:,ibnd-1)
+          psi(:,ibnd-1) = psi0
+          !
+       END IF
+       !
+    END DO
+    !
+    IF ( nswap > 0 ) GOTO 20
+    !
+    DEALLOCATE( psi0 )
     !
     RETURN
     !
