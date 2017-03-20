@@ -46,9 +46,9 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), dphi(:,:,:)
   COMPLEX(DP), ALLOCATABLE :: dpsi(:,:), hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: hc(:,:,:), sc(:,:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
   LOGICAL,     ALLOCATABLE :: conv(:)
-  REAL(DP),    ALLOCATABLE :: hc(:,:,:), sc(:,:,:)
   !
   CALL start_clock( 'crmmdiagg' )
   !
@@ -68,23 +68,35 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
   !
-  ALLOCATE( phi( kdmx, nbnd, ndiis ), STAT=ierr )
-  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ',' cannot allocate phi ', ABS(ierr) )
+  ALLOCATE( phi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate phi ', ABS(ierr) )
   !
-  ALLOCATE( dphi( kdmx, nbnd, ndiis ), STAT=ierr )
-  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ',' cannot allocate dphi ', ABS(ierr) )
+  ALLOCATE( dphi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate dphi ', ABS(ierr) )
   !
-  ALLOCATE( dpsi( kdmx, nbnd ) )
-  ALLOCATE( hpsi( kdmx, nbnd ) )
-  IF ( uspp ) ALLOCATE( spsi( kdmx, nbnd ) )
+  ALLOCATE( dpsi( kdmx, nbnd ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate dpsi ', ABS(ierr) )
+  !
+  ALLOCATE( hpsi( kdmx, nbnd ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hpsi ', ABS(ierr) )
+  !
+  IF ( uspp ) THEN
+     !
+     ALLOCATE( spsi( kdmx, nbnd ), STAT=ierr )
+     IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate spsi ', ABS(ierr) )
+     !
+  END IF
+  !
+  ALLOCATE( hc( ndiis, ndiis, ibnd_start:ibnd_end ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hc ', ABS(ierr) )
+  !
+  ALLOCATE( sc( ndiis, ndiis, ibnd_start:ibnd_end ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate sc ', ABS(ierr) )
   !
   ALLOCATE( ew( nbnd ) )
   ALLOCATE( hw( nbnd ) )
   ALLOCATE( sw( nbnd ) )
   ALLOCATE( conv( nbnd ) )
-  !
-  ALLOCATE( hc( ndiis, ndiis, ibnd_start:ibnd_end ) )
-  ALLOCATE( sc( ndiis, ndiis, ibnd_start:ibnd_end ) )
   !
   phi  = ZERO
   dphi = ZERO
@@ -118,11 +130,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
      CALL residuals( )
      !
-     ! ... Save current wave functions and residual vectors
-     !
-     phi (:,:,idiis) = psi (:,:)
-     dphi(:,:,idiis) = dpsi(:,:)
-     !
      ! ... Perform DIIS
      !
      CALL do_diis( idiis )
@@ -148,12 +155,12 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   DEALLOCATE( dpsi )
   DEALLOCATE( hpsi )
   IF ( uspp ) DEALLOCATE( spsi )
+  DEALLOCATE( hc )
+  DEALLOCATE( sc )
   DEALLOCATE( ew )
   DEALLOCATE( hw )
   DEALLOCATE( sw )
   DEALLOCATE( conv )
-  DEALLOCATE( hc )
-  DEALLOCATE( sc )
   !
   CALL stop_clock( 'crmmdiagg' )
   !
@@ -167,7 +174,7 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER  :: ibnd
+    INTEGER :: ibnd
     !
     ! ... |R> = (H - e S) |psi>
     !
@@ -188,56 +195,212 @@ CONTAINS
   END SUBROUTINE residuals
   !
   !
-  SUBROUTINE do_diis( kdiis )
+  SUBROUTINE do_diis( idiis )
     !
     IMPLICIT NONE
     !
-    INTEGER, INTENT(IN) :: kdiis
+    INTEGER, INTENT(IN) :: idiis
     !
-    INTEGER :: ibnd
+    INTEGER                  :: ibnd
+    INTEGER                  :: kdiis
+    COMPLEX(DP), ALLOCATABLE :: vc(:)
+    COMPLEX(DP), ALLOCATABLE :: tc(:,:)
+    !
+    IF ( idiis > 1 ) ALLOCATE( vc( idiis ) )
+    ALLOCATE( tc( idiis, ibnd_start:ibnd_end ) )
+    !
+    ! ... Save current wave functions and residual vectors
+    !
+    phi (:,ibnd_start:ibnd_end,idiis) = psi (:,ibnd_start:ibnd_end)
+    dphi(:,ibnd_start:ibnd_end,idiis) = dpsi(:,ibnd_start:ibnd_end)
+    !
+    ! ... <R_i|R_j>
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       ! ... <R_i|R_j>
+       CALL ZGEMV( 'C', kdim, idiis, ONE, dphi(1,ibnd,1), kdmx, &
+                   dphi(1,ibnd,idiis), 1, ZERO, hc(1,idiis,ibnd), 1 )
        !
-       CALL ZGEMV( 'C', kdim, kdiis, ONE, dphi(1,ibnd,1), kdmx, &
-                   dphi(1,ibnd,kdiis), 1, ZERO, hc(1,kdiis,ibnd), 1 )
+    END DO
+    !
+    tc(1:idiis,ibnd_start:ibnd_end) = hc(1:idiis,idiis,ibnd_start:ibnd_end)
+    CALL mp_sum( tc, intra_bgrp_comm )
+    hc(1:idiis,idiis,ibnd_start:ibnd_end) = tc(1:idiis,ibnd_start:ibnd_end)
+    !
+    DO ibnd = ibnd_start, ibnd_end
        !
-       CALL mp_sum( hc(:,:,ibnd), intra_bgrp_comm )
+       hc(idiis,idiis,ibnd) = CMPLX( DBLE( hc(idiis,idiis,ibnd), 0._DP, kind=DP )
+       hc(idiis,1:idiis,ibnd) = CONJG( hc(1:idiis,idiis,ibnd) )
        !
-       hc(kdiis,kdiis,ibnd) = CMPLX( DBLE( hc(kdiis,kdiis,ibnd), 0._DP, kind=DP )
-       hc(kdiis,1:kdiis,ibnd) = CONJG( hc(1:kdiis,kdiis,ibnd) )
-       !
-       ! ... <phi_i| S |phi_j>
+    END DO
+    !
+    ! ... <phi_i| S |phi_j>
+    !
+    DO ibnd = ibnd_start, ibnd_end
        !
        IF ( uspp ) THEN
           !
-          CALL ZGEMV( 'C', kdim, kdiis, ONE, phi(1,ibnd,1), kdmx, &
-                      sphi(1,ibnd,kdiis), 1, ZERO, sc(1,kdiis,ibnd), 1 )
+          CALL ZGEMV( 'C', kdim, idiis, ONE, phi(1,ibnd,1), kdmx, &
+                      sphi(1,ibnd,idiis), 1, ZERO, sc(1,idiis,ibnd), 1 )
           !
        ELSE
           !
-          CALL ZGEMV( 'C', kdim, kdiis, ONE, phi(1,ibnd,1), kdmx, &
-                      phi(1,ibnd,kdiis), 1, ZERO, sc(1,kdiis,ibnd), 1 )
+          CALL ZGEMV( 'C', kdim, idiis, ONE, phi(1,ibnd,1), kdmx, &
+                      phi(1,ibnd,idiis), 1, ZERO, sc(1,idiis,ibnd), 1 )
           !
        END IF
        !
-       CALL mp_sum( sc(:,:,ibnd), intra_bgrp_comm )
+    END DO
+    !
+    tc(1:idiis,ibnd_start:ibnd_end) = sc(1:idiis,idiis,ibnd_start:ibnd_end)
+    CALL mp_sum( tc, intra_bgrp_comm )
+    sc(1:idiis,idiis,ibnd_start:ibnd_end) = tc(1:idiis,ibnd_start:ibnd_end)
+    !
+    DO ibnd = ibnd_start, ibnd_end
        !
-       sc(kdiis,kdiis,ibnd) = CMPLX( DBLE( sc(kdiis,kdiis,ibnd), 0._DP, kind=DP )
-       sc(kdiis,1:kdiis,ibnd) = CONJG( sc(1:kdiis,kdiis,ibnd) )
-       !
-       IF ( kdiis == 1 ) CYCLE
-       !
-       ! TODO
-       ! TODO solve only for root
-       ! TODO
+       sc(idiis,idiis,ibnd) = CMPLX( DBLE( sc(idiis,idiis,ibnd), 0._DP, kind=DP )
+       sc(idiis,1:idiis,ibnd) = CONJG( sc(1:idiis,idiis,ibnd) )
        !
     END DO
+    !
+    ! ... Update current wave functions and residual vectors
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( idiis > 1 ) THEN
+          !
+          ! ... solve Rv = eSv
+          !
+          CALL diag_diis( ibnd, idiis, vc(:) )
+          !
+          psi (:,ibnd) = ZERO
+          dpsi(:,ibnd) = ZERO
+          !
+          DO kdiis = 1, idiis
+             !
+             psi (:,ibnd) = vc(kdiis) * phi (:,ibnd,kdiis)
+             dpsi(:,ibnd) = vc(kdiis) * dphi(:,ibnd,kdiis)
+             !
+          END DO
+          !
+       ELSE
+          !
+          psi (:,ibnd) = phi (:,ibnd,1)
+          dpsi(:,ibnd) = dphi(:,ibnd,1)
+          !
+       END IF
+       !
+    END DO
+    !
+    IF ( idiis > 1 ) DEALLOCATE( vc )
+    DEALLOCATE( tc )
     !
     RETURN
     !
   END SUBROUTINE do_diis
+  !
+  !
+  SUBROUTINE diag_diis( ibnd, idiis, vc )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER,     INTENT(IN)  :: ibnd
+    INTEGER,     INTENT(IN)  :: idiis
+    COMPLEX(DP), INTENT(OUT) :: vc(idiis)
+    !
+    INTEGER                  :: info
+    INTEGER                  :: ndim, ndep
+    INTEGER                  :: i, imin
+    REAL(DP)                 :: emin
+    COMPLEX(DP), ALLOCATABLE :: h1(:,:)
+    COMPLEX(DP), ALLOCATABLE :: h2(:,:)
+    COMPLEX(DP), ALLOCATABLE :: h3(:,:)
+    COMPLEX(DP), ALLOCATABLE :: s1(:,:)
+    COMPLEX(DP), ALLOCATABLE :: s2(:,:)
+    COMPLEX(DP), ALLOCATABLE :: x1(:,:)
+    REAL(DP),    ALLOCATABLE :: e1(:)
+    INTEGER                  :: nwork
+    COMPLEX(DP), ALLOCATABLE :: work(:)
+    !
+    ndim  = idiis
+    nwork = 3 * ndim
+    !
+    ALLOCATE( h1( ndim, ndim ) )
+    ALLOCATE( h2( ndim, ndim ) )
+    ALLOCATE( h3( ndim, ndim ) )
+    ALLOCATE( s1( ndim, ndim ) )
+    ALLOCATE( s2( ndim, ndim ) )
+    ALLOCATE( x1( ndim, ndim ) )
+    ALLOCATE( e1( ndim ) )
+    ALLOCATE( work( nwork ) )
+    !
+    h1(1:ndim,1:ndim) = hc(1:ndim,1:ndim,ibnd)
+    s1(1:ndim,1:ndim) = sc(1:ndim,1:ndim,ibnd)
+    !
+    CALL ZHEEV( 'V', 'U', ndim, s1, ndim, e1, work, nwork, info )
+    !
+    IF( info /= 0 ) CALL errore( ' crmmdiagg ', ' cannot solve diis ', ABS(info) )
+    !
+    ndep = 0
+    !
+    DO i = 1, ndim
+       !
+       IF ( e1(i) > eps14 ) THEN
+          !
+          s2(:,i) = s1(:,i) / SQRT(e1(i))
+          !
+       ELSE
+          !
+          ndep = ndep + 1
+          !
+          s2(:,i) = ZERO
+          !
+       END IF
+       !
+    END DO
+    !
+    IF ( (ndim - ndep) <= 1 ) THEN
+       !
+       vc        = ZERO
+       vc(idiis) = ONE
+       !
+       GOTO 10
+       !
+    END IF
+    !
+    CALL ZGEMM( 'N', 'C', ndim, ndim, ndim, ONE, s2, ndim, s1, ndim, ZERO, x1, ndim )
+    !
+    CALL ZGEMM( 'N', 'N', ndim, ndim, ndim, ONE, h1, ndim, x1, ndim, ZERO, h2, ndim )
+    !
+    CALL ZGEMM( 'N', 'N', ndim, ndim, ndim, ONE, x1, ndim, h2, ndim, ZERO, h3, ndim )
+    !
+    CALL ZHEEV( 'V', 'U', ndim, h3, ndim, e1, work, nwork, info )
+    !
+    IF( info /= 0 ) CALL errore( ' crmmdiagg ', ' cannot solve diis ', ABS(info) )
+    !
+    imin = 1
+    emin = e1(1)
+    !
+    DO i = 2, ndim
+       !
+       IF ( e1(i) < emin ) imin = i
+       !
+    END DO
+    !
+    CALL ZGEMV( 'N', ndim, ndim, ONE, x1, ndim, h3(:,imin), 1, ZERO, vc, 1 )
+    !
+10  DEALLOCATE( h1 )
+    DEALLOCATE( h2 )
+    DEALLOCATE( h3 )
+    DEALLOCATE( s1 )
+    DEALLOCATE( s2 )
+    DEALLOCATE( x1 )
+    DEALLOCATE( e1 )
+    DEALLOCATE( work )
+    !
+    RETURN
+    !
+  END SUBROUTINE diag_diis
   !
   !
   SUBROUTINE line_search( )
@@ -279,7 +442,7 @@ CONTAINS
     FORALL ( ibnd = ibnd_start:ibnd_end ) &
     hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
     !
-    CALL mp_sum( hw, intra_bgrp_comm )
+    CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
     !
     IF ( uspp ) THEN
        !
@@ -293,30 +456,30 @@ CONTAINS
        !
     END IF
     !
-    CALL mp_sum( sw, intra_bgrp_comm )
+    CALL mp_sum( sw(ibnd_start:ibnd_end), intra_bgrp_comm )
     !
-    ew(:) = 0.0_DP
+    ew(1:nbnd) = 0.0_DP
     ew(ibnd_start:ibnd_end) = hw(ibnd_start:ibnd_end) / sw(ibnd_start:ibnd_end)
     !
     CALL mp_sum( ew, inter_bgrp_comm )
     !
     ! ... Check convergence
     !
-    WHERE( btype(:) == 1 )
+    WHERE( btype(1:nbnd) == 1 )
        !
-       conv(:) = ( ( ABS( ew(:) - e(:) ) < ethr ) )
+       conv(1:nbnd) = ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
        !
     ELSEWHERE
        !
-       conv(:) = ( ( ABS( ew(:) - e(:) ) < empty_ethr ) )
+       conv(1:nbnd) = ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
        !
     END WHERE
     !
     CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm )
     !
-    notconv = COUNT( .NOT. conv(:) )
+    notconv = COUNT( .NOT. conv(1:nbnd) )
     !
-    e(:) = ew(:)
+    e(1:nbnd) = ew(1:nbnd)
     !
     RETURN
     !
