@@ -43,7 +43,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   INTEGER                  :: ierr
   INTEGER                  :: idiis
-  INTEGER                  :: ibnd_start, ibnd_end
+  INTEGER                  :: ibnd_start, ibnd_end, ibnd_size
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
   COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
@@ -74,6 +74,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   END IF
   !
   CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
+  !
+  ibnd_size = MAX( ibnd_end - ibnd_start + 1, 0 )
   !
   ALLOCATE( phi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate phi ', ABS(ierr) )
@@ -152,7 +154,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   ! ... Initial eigenvalues
   !
-  CALL eigenvalues( )
+  CALL eigenvalues( .TRUE. )
   !
   ! ... RMM-DIIS's loop
   !
@@ -172,7 +174,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
      ! ... Calculate eigenvalues and check convergence
      !
-     CALL eigenvalues( )
+     CALL eigenvalues( .FALSE. )
      !
      IF ( notconv == 0 ) EXIT
      !
@@ -215,24 +217,26 @@ CONTAINS
     !
     INTEGER                  :: ibnd
     INTEGER                  :: kdiis
-    COMPLEX(DP), ALLOCATABLE :: res1(:,:)
-    COMPLEX(DP), ALLOCATABLE :: res2(:)
+    COMPLEX(DP)              :: ec
+    COMPLEX(DP), ALLOCATABLE :: res1(:)
+    COMPLEX(DP), ALLOCATABLE :: res2(:,:)
     COMPLEX(DP), ALLOCATABLE :: vc(:)
     COMPLEX(DP), ALLOCATABLE :: tc(:,:)
     !
-    ALLOCATE( res1( kdmx, idiis ) )
-    ALLOCATE( res2( kdmx ) )
+    ALLOCATE( res1( kdmx ) )
+    ALLOCATE( res2( kdmx, idiis ) )
     IF ( idiis > 1 ) ALLOCATE( vc( idiis ) )
     ALLOCATE( tc( idiis, ibnd_start:ibnd_end ) )
     !
     ! ... Save current wave functions and eigenvalues
     !
-    phi (:,ibnd_start:ibnd_end,idiis) = psi (:,ibnd_start:ibnd_end)
-    hphi(:,ibnd_start:ibnd_end,idiis) = hpsi(:,ibnd_start:ibnd_end)
+    CALL ZCOPY( kdmx * ibnd_size, psi (1,ibnd_start), 1, phi (1,ibnd_start,idiis), 1 )
+    CALL ZCOPY( kdmx * ibnd_size, hpsi(1,ibnd_start), 1, hphi(1,ibnd_start,idiis), 1 )
     IF ( uspp ) &
-    sphi(:,ibnd_start:ibnd_end,idiis) = spsi(:,ibnd_start:ibnd_end)
-    php   (ibnd_start:ibnd_end,idiis) = hw    (ibnd_start:ibnd_end)
-    psp   (ibnd_start:ibnd_end,idiis) = sw    (ibnd_start:ibnd_end)
+    CALL ZCOPY( kdmx * ibnd_size, spsi(1,ibnd_start), 1, sphi(1,ibnd_start,idiis), 1 )
+    !
+    CALL DCOPY( ibnd_size, hw(ibnd_start), 1, php(ibnd_start,idiis), 1 )
+    CALL DCOPY( ibnd_size, sw(ibnd_start), 1, psp(ibnd_start,idiis), 1 )
     !
     ! ... <R_i|R_j>
     !
@@ -240,12 +244,20 @@ CONTAINS
        !
        ! ... Residual vectors : |R> = (H - e S) |psi>
        !
-       FORALL ( kdiis = 1:idiis ) &
-       res1(:,kdiis) = hphi(:,ibnd,kdiis) - php(ibnd,kdiis) * sphi(:,ibnd,kdiis)
-       res2(:)       = hphi(:,ibnd,idiis) - php(ibnd,idiis) * sphi(:,ibnd,idiis)
+       DO kdiis = 1, idiis
+          !
+          ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
+          CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, res2(1,kdiis), 1 )
+          CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, res2(1,kdiis), 1 )
+          !
+       END DO
        !
-       CALL ZGEMV( 'C', kdim, idiis, ONE, res1(1,1), kdmx, &
-                   res2(1), 1, ZERO, hc(1,idiis,ibnd), 1 )
+       ec = CMPLX( php(ibnd,idiis), 0._DP, kind=DP )
+       CALL ZCOPY( kdim, hphi(1,ibnd,idiis), 1, res1(1), 1 )
+       CALL ZAXPY( kdim, -ec, sphi(1,ibnd,idiis), 1, res1(1), 1 )
+       !
+       CALL ZGEMV( 'C', kdim, idiis, ONE, res2(1,1), kdmx, &
+                   res1(1), 1, ZERO, hc(1,idiis,ibnd), 1 )
        !
     END DO
     !
@@ -308,23 +320,23 @@ CONTAINS
           !
           DO kdiis = 1, idiis
              !
-             psi (:,ibnd) = psi (:,ibnd) + vc(kdiis) * phi (:,ibnd,kdiis)
-             hpsi(:,ibnd) = hpsi(:,ibnd) + vc(kdiis) * hphi(:,ibnd,kdiis)
+             CALL ZAXPY( kdim, vc(kdiis), phi (1,ibnd,kdiis), 1, psi (1,ibnd), 1 )
+             CALL ZAXPY( kdim, vc(kdiis), hphi(1,ibnd,kdiis), 1, hpsi(1,ibnd), 1 )
              IF ( uspp ) &
-             spsi(:,ibnd) = spsi(:,ibnd) + vc(kdiis) * sphi(:,ibnd,kdiis)
+             CALL ZAXPY( kdim, vc(kdiis), sphi(1,ibnd,kdiis), 1, spsi(1,ibnd), 1 )
              !
-             res2(:) = hphi(:,ibnd,kdiis) - php(ibnd,kdiis) * sphi(:,ibnd,kdiis)
-             kpsi(:,ibnd) = kpsi(:,ibnd) + vc(kdiis) * res2(:)
+             ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
+             CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, res1(1), 1 )
+             CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, res1(1), 1 )
+             CALL ZAXPY( kdim, vc(kdiis), res1(1), 1, kpsi(1,ibnd), 1 )
              !
           END DO
           !
        ELSE
           !
-          psi (:,ibnd) = phi (:,ibnd,1)
-          hpsi(:,ibnd) = hphi(:,ibnd,1)
-          IF ( uspp ) &
-          spsi(:,ibnd) = sphi(:,ibnd,1)
-          kpsi(:,ibnd) = hphi(:,ibnd,1) - php(ibnd,1) * sphi(:,ibnd,1)
+          ec = CMPLX( hw(ibnd), 0._DP, kind=DP )
+          CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+          CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
           !
        END IF
        !
@@ -451,16 +463,18 @@ CONTAINS
     REAL(DP)              :: a, b
     REAL(DP)              :: ene0, ene1
     REAL(DP)              :: step, norm
-    REAL(DP)              :: coef1, coef2
     REAL(DP)              :: php, khp, khk
     REAL(DP)              :: psp, ksp, ksk
-    REAL(DP), ALLOCATABLE :: hmat(:,:)
-    REAL(DP), ALLOCATABLE :: smat(:,:)
+    REAL(DP), ALLOCATABLE :: hmat(:,:), smat(:,:)
+    REAL(DP)              :: c1, c2
+    COMPLEX(DP)           :: z1, z2
+    REAL(DP), ALLOCATABLE :: coef(:,:)
     !
     COMPLEX(DP), EXTERNAL :: ZDOTC
     !
     ALLOCATE( hmat( 3, ibnd_start:ibnd_end ) )
     ALLOCATE( smat( 3, ibnd_start:ibnd_end ) )
+    ALLOCATE( coef( 2, ibnd_start:ibnd_end ) )
     !
     ! ... Preconditioning vectors : K (H - e S) |psi>
     !
@@ -517,51 +531,81 @@ CONTAINS
     !
     ! ... Line searching for each band
     !
+    IF ( me_bgrp == root_bgrp ) THEN
+       !
+       DO ibnd = ibnd_start, ibnd_end
+          !
+          php = hmat(1,ibnd)
+          khp = hmat(2,ibnd)
+          khk = hmat(3,ibnd)
+          !
+          psp = smat(1,ibnd)
+          ksp = smat(2,ibnd)
+          ksk = smat(3,ibnd)
+          IF( psp <= eps16 ) CALL errore( ' crmmdiagg ', ' psp <= 0 ', 1 )
+          !
+          norm = psp + 2._DP * ksp * SREF + ksk * SREF * SREF
+          IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
+          !
+          ene0 = php / psp
+          ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SERF ) / norm
+          !
+          a = 2._DP * ( khp * psp - php * ksp ) / psp / psp
+          b = ( ene1 - ene0 - coef1 * SREF ) / SREF / SREF
+          IF( ABS( b ) < eps16 ) CALL errore( ' crmmdiagg ', ' b == 0 ', 1 )
+          !
+          step  = -0.5_DP * a / b
+          step  = MAX( SMIN, step )
+          step  = MIN( SMAX, step )
+          norm  = psp + 2._DP * ksp * step + ksk * step * step
+          IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
+          norm  = SQRT( norm )
+          !
+          coef(1,ibnd) = 1._DP / norm
+          coef(2,ibnd) = step  / norm
+          !
+          ! ... Update current matrix elements
+          !
+          c1 = coef(1,ibnd)
+          c2 = coef(2,ibnd)
+          !
+          hw(ibnd) = php * c1 * c1 + 2._DP * khp * c1 * c2 + khk * c2 * c2
+          sw(ibnd) = psp * c1 * c1 + 2._DP * ksp * c1 * c2 + ksk * c2 * c2
+          !
+       END DO
+       !
+    END IF
+    !
+    CALL mp_bcast( coef, root_bgrp, intra_bgrp_comm )
+    CALL mp_bcast( hw(ibnd_start:ibnd_end), root_bgrp, intra_bgrp_comm )
+    CALL mp_bcast( sw(ibnd_start:ibnd_end), root_bgrp, intra_bgrp_comm )
+    !
+    ! ... Update current wave functions
+    !
     DO ibnd = ibnd_start, ibnd_end
        !
-       php = hmat(1,ibnd)
-       khp = hmat(2,ibnd)
-       khk = hmat(3,ibnd)
+       z1 = CMPLX( coef(1,ibnd), 0._DP, kind=DP )
+       z2 = CMPLX( coef(2,ibnd), 0._DP, kind=DP )
        !
-       psp = smat(1,ibnd)
-       ksp = smat(2,ibnd)
-       ksk = smat(3,ibnd)
-       IF( psp <= eps16 ) CALL errore( ' crmmdiagg ', ' psp <= 0 ', 1 )
+       CALL ZSCAL( kdim, z1, psi (1,ibnd), 1 )
+       CALL ZAXPY( kdim, z2, kpsi(1,ibnd), 1, psi(1), 1 )
        !
-       norm = psp + 2._DP * ksp * SREF + ksk * SREF * SREF
-       IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
+       CALL ZSCAL( kdim, z1, hpsi (1,ibnd), 1 )
+       CALL ZAXPY( kdim, z2, hkpsi(1,ibnd), 1, hpsi(1), 1 )
        !
-       ene0 = php / psp
-       ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SERF ) / norm
-       !
-       a = 2._DP * ( khp * psp - php * ksp ) / psp / psp
-       b = ( ene1 - ene0 - coef1 * SREF ) / SREF / SREF
-       IF( ABS( b ) < eps16 ) CALL errore( ' crmmdiagg ', ' b == 0 ', 1 )
-       !
-       step  = -0.5_DP * a / b
-       step  = MAX( SMIN, step )
-       step  = MIN( SMAX, step )
-       norm  = psp + 2._DP * ksp * step + ksk * step * step
-       IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
-       norm  = SQRT( norm )
-       !
-       coef1 = 1._DP / norm
-       coef2 = step  / norm
-       !
-       ! ... Update current wave functions and matrix elements
-       !
-       psi (:,ibnd) = coef1 * psi (:,ibnd) + coef2 * kpsi (:,ibnd)
-       hpsi(:,ibnd) = coef1 * hpsi(:,ibnd) + coef2 * hkpsi(:,ibnd)
-       IF ( uspp ) &
-       spsi(:,ibnd) = coef1 * spsi(:,ibnd) + coef2 * skpsi(:,ibnd)
-       !
-       hw(ibnd) = php * coef1 * coef1 + 2._DP * khp * coef1 * coef2 + khk * coef2 * coef2
-       sw(ibnd) = psp * coef1 * coef1 + 2._DP * ksp * coef1 * coef2 + ksk * coef2 * coef2
+       IF ( uspp ) THEN
+          !
+          CALL ZSCAL( kdim, z1, spsi (1,ibnd), 1 )
+          CALL ZAXPY( kdim, z2, skpsi(1,ibnd), 1, hpsi(1), 1 )
+          !
+       END IF
        !
     END DO
     !
     DEALLOCATE( hmat )
     DEALLOCATE( smat )
+    DEALLOCATE( coef1 )
+    DEALLOCATE( coef2 )
     !
     RETURN
     !
@@ -586,7 +630,7 @@ CONTAINS
        !
        IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
        !
-       ! ... Eigenvalues
+       ! ... Matrix elements
        !
        FORALL ( ibnd = ibnd_start:ibnd_end ) &
        hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
@@ -608,6 +652,8 @@ CONTAINS
        CALL mp_sum( sw(ibnd_start:ibnd_end), intra_bgrp_comm )
        !
     END IF
+    !
+    ! ... Energy eigenvalues
     !
     IF( ANY( sw(ibnd_start:ibnd_end) <= eps16 ) ) &
     CALL errore( ' crmmdiagg ', ' sw <= 0 ', 1 )
