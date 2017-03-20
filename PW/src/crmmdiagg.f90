@@ -302,7 +302,7 @@ CONTAINS
        !
     END DO
     !
-    ! ... Update current wave functions
+    ! ... Update current wave functions and residual vectors
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -321,10 +321,14 @@ CONTAINS
           !
           DO kdiis = 1, idiis
              !
+             ! ... Wave functions
+             !
              CALL ZAXPY( kdim, vc(kdiis), phi (1,ibnd,kdiis), 1, psi (1,ibnd), 1 )
              CALL ZAXPY( kdim, vc(kdiis), hphi(1,ibnd,kdiis), 1, hpsi(1,ibnd), 1 )
              IF ( uspp ) &
              CALL ZAXPY( kdim, vc(kdiis), sphi(1,ibnd,kdiis), 1, spsi(1,ibnd), 1 )
+             !
+             ! ... Residual vectors
              !
              ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
              CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, res1(1), 1 )
@@ -334,6 +338,8 @@ CONTAINS
           END DO
           !
        ELSE
+          !
+          ! ... Residual vectors
           !
           ec = CMPLX( hw(ibnd), 0._DP, kind=DP )
           CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
