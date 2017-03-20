@@ -17,7 +17,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ! ... Iterative diagonalization of a complex hermitian matrix
   ! ... through preconditioned RMM-DIIS algorithm.
   !
-  USE constants, ONLY : eps14
+  USE constants, ONLY : eps14, eps16
   USE kinds,     ONLY : DP
   USE mp,        ONLY : mp_sum, mp_bcast
   USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, me_bgrp, &
@@ -52,6 +52,10 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   REAL(DP),    ALLOCATABLE :: php(:,:), psp(:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
   LOGICAL,     ALLOCATABLE :: conv(:)
+  !
+  REAL(DP),    PARAMETER   :: SREF = 0.5_DP
+  REAL(DP),    PARAMETER   :: SMIN = 0.1_DP
+  REAL(DP),    PARAMETER   :: SMAX = 2.0_DP
   !
   CALL start_clock( 'crmmdiagg' )
   !
@@ -443,7 +447,20 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER :: ibnd
+    INTEGER               :: ibnd
+    REAL(DP)              :: a, b
+    REAL(DP)              :: ene0, ene1
+    REAL(DP)              :: step, norm
+    REAL(DP)              :: coef1, coef2
+    REAL(DP)              :: php, khp, khk
+    REAL(DP)              :: psp, ksp, ksk
+    REAL(DP), ALLOCATABLE :: hmat(:,:)
+    REAL(DP), ALLOCATABLE :: smat(:,:)
+    !
+    COMPLEX(DP), EXTERNAL :: ZDOTC
+    !
+    ALLOCATE( hmat( 3, ibnd_start:ibnd_end ) )
+    ALLOCATE( smat( 3, ibnd_start:ibnd_end ) )
     !
     ! ... Preconditioning vectors : K (H - e S) |psi>
     !
@@ -463,56 +480,137 @@ CONTAINS
     !
     IF ( uspp ) CALL s_psi( npwx, npw, nbnd, kpsi, skpsi )
     !
+    ! ... Create 2 x 2 matrix
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       php = DBLE( ZDOTC( kdim, psi (1,ibnd), 1, hpsi (1,ibnd), 1 ) )
+       khp = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, hpsi (1,ibnd), 1 ) )
+       khk = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, hkpsi(1,ibnd), 1 ) )
+       !
+       IF ( uspp ) THEN
+          !
+          psp = DBLE( ZDOTC( kdim, psi (1,ibnd), 1, spsi (1,ibnd), 1 ) )
+          ksp = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, spsi (1,ibnd), 1 ) )
+          ksk = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, skpsi(1,ibnd), 1 ) )
+          !
+       ELSE
+          !
+          psp = DBLE( ZDOTC( kdim, psi (1,ibnd), 1, psi (1,ibnd), 1 ) )
+          ksp = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, psi (1,ibnd), 1 ) )
+          ksk = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, kpsi(1,ibnd), 1 ) )
+          !
+       END IF
+       !
+       hmat(1,ibnd) = php
+       hmat(2,ibnd) = khp
+       hmat(3,ibnd) = khk
+       !
+       smat(1,ibnd) = psp
+       smat(2,ibnd) = ksp
+       smat(3,ibnd) = ksk
+       !
+    END DO
+    !
+    CALL mp_sum( hmat, intra_bgrp_comm )
+    CALL mp_sum( smat, intra_bgrp_comm )
+    !
     ! ... Line searching for each band
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       ! TODO
-       ! TODO
-       ! TODO
+       php = hmat(1,ibnd)
+       khp = hmat(2,ibnd)
+       khk = hmat(3,ibnd)
+       !
+       psp = smat(1,ibnd)
+       ksp = smat(2,ibnd)
+       ksk = smat(3,ibnd)
+       IF( psp <= eps16 ) CALL errore( ' crmmdiagg ', ' psp <= 0 ', 1 )
+       !
+       norm = psp + 2._DP * ksp * SREF + ksk * SREF * SREF
+       IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
+       !
+       ene0 = php / psp
+       ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SERF ) / norm
+       !
+       a = 2._DP * ( khp * psp - php * ksp ) / psp / psp
+       b = ( ene1 - ene0 - coef1 * SREF ) / SREF / SREF
+       IF( ABS( b ) < eps16 ) CALL errore( ' crmmdiagg ', ' b == 0 ', 1 )
+       !
+       step  = -0.5_DP * a / b
+       step  = MAX( SMIN, step )
+       step  = MIN( SMAX, step )
+       norm  = psp + 2._DP * ksp * step + ksk * step * step
+       IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
+       norm  = SQRT( norm )
+       !
+       coef1 = 1._DP / norm
+       coef2 = step  / norm
+       !
+       ! ... Update current wave functions and matrix elements
+       !
+       psi (:,ibnd) = coef1 * psi (:,ibnd) + coef2 * kpsi (:,ibnd)
+       hpsi(:,ibnd) = coef1 * hpsi(:,ibnd) + coef2 * hkpsi(:,ibnd)
+       IF ( uspp ) &
+       spsi(:,ibnd) = coef1 * spsi(:,ibnd) + coef2 * skpsi(:,ibnd)
+       !
+       hw(ibnd) = php * coef1 * coef1 + 2._DP * khp * coef1 * coef2 + khk * coef2 * coef2
+       sw(ibnd) = psp * coef1 * coef1 + 2._DP * ksp * coef1 * coef2 + ksk * coef2 * coef2
        !
     END DO
+    !
+    DEALLOCATE( hmat )
+    DEALLOCATE( smat )
     !
     RETURN
     !
   END SUBROUTINE line_search
   !
   !
-  SUBROUTINE eigenvalues( )
+  SUBROUTINE eigenvalues( first )
     !
     IMPLICIT NONE
     !
-    INTEGER            :: ibnd
-    REAL(DP), EXTERNAL :: ZDOTC
+    INTEGER :: ibnd
     !
-    ! ... Operate the Hamiltonian : H |psi>
+    COMPLEX(DP), EXTERNAL :: ZDOTC
     !
-    CALL h_psi( npwx, npw, nbnd, psi, hpsi )
-    !
-    ! ... Operate the Overlap : S |psi>
-    !
-    IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
-    !
-    ! ... Eigenvalues
-    !
-    FORALL ( ibnd = ibnd_start:ibnd_end ) &
-    hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
-    !
-    CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
-    !
-    IF ( uspp ) THEN
+    IF ( first ) THEN
+       !
+       ! ... Operate the Hamiltonian : H |psi>
+       !
+       CALL h_psi( npwx, npw, nbnd, psi, hpsi )
+       !
+       ! ... Operate the Overlap : S |psi>
+       !
+       IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
+       !
+       ! ... Eigenvalues
        !
        FORALL ( ibnd = ibnd_start:ibnd_end ) &
-       sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
+       hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
        !
-    ELSE
+       CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
        !
-       FORALL ( ibnd = ibnd_start:ibnd_end ) &
-       sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 )
+       IF ( uspp ) THEN
+          !
+          FORALL ( ibnd = ibnd_start:ibnd_end ) &
+          sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
+          !
+       ELSE
+          !
+          FORALL ( ibnd = ibnd_start:ibnd_end ) &
+          sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 )
+          !
+       END IF
+       !
+       CALL mp_sum( sw(ibnd_start:ibnd_end), intra_bgrp_comm )
        !
     END IF
     !
-    CALL mp_sum( sw(ibnd_start:ibnd_end), intra_bgrp_comm )
+    IF( ANY( sw(ibnd_start:ibnd_end) <= eps16 ) ) &
+    CALL errore( ' crmmdiagg ', ' sw <= 0 ', 1 )
     !
     ew(1:nbnd) = 0.0_DP
     ew(ibnd_start:ibnd_end) = hw(ibnd_start:ibnd_end) / sw(ibnd_start:ibnd_end)
