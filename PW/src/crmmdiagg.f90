@@ -20,7 +20,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   USE constants, ONLY : eps14
   USE kinds,     ONLY : DP
   USE mp,        ONLY : mp_sum, mp_bcast
-  USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, root_bgrp_id, set_bgrp_indices
+  USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, me_bgrp, &
+                        root_bgrp, root_bgrp_id, set_bgrp_indices
   !
   IMPLICIT NONE
   !
@@ -44,9 +45,11 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   INTEGER                  :: idiis
   INTEGER                  :: ibnd_start, ibnd_end
   REAL(DP)                 :: empty_ethr
-  COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), dphi(:,:,:)
-  COMPLEX(DP), ALLOCATABLE :: dpsi(:,:), hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
+  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: kpsi(:,:), hkpsi(:,:), skpsi(:,:)
   COMPLEX(DP), ALLOCATABLE :: hc(:,:,:), sc(:,:,:)
+  REAL(DP),    ALLOCATABLE :: php(:,:), psp(:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
   LOGICAL,     ALLOCATABLE :: conv(:)
   !
@@ -71,11 +74,15 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ALLOCATE( phi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate phi ', ABS(ierr) )
   !
-  ALLOCATE( dphi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
-  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate dphi ', ABS(ierr) )
+  ALLOCATE( hphi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hphi ', ABS(ierr) )
   !
-  ALLOCATE( dpsi( kdmx, nbnd ), STAT=ierr )
-  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate dpsi ', ABS(ierr) )
+  IF ( uspp ) THEN
+     !
+     ALLOCATE( sphi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
+     IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate sphi ', ABS(ierr) )
+     !
+  END IF
   !
   ALLOCATE( hpsi( kdmx, nbnd ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hpsi ', ABS(ierr) )
@@ -87,11 +94,30 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
   END IF
   !
+  ALLOCATE( kpsi( kdmx, nbnd ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate kpsi ', ABS(ierr) )
+  !
+  ALLOCATE( hkpsi( kdmx, nbnd ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hkpsi ', ABS(ierr) )
+  !
+  IF ( uspp ) THEN
+     !
+     ALLOCATE( skpsi( kdmx, nbnd ), STAT=ierr )
+     IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate skpsi ', ABS(ierr) )
+     !
+  END IF
+  !
   ALLOCATE( hc( ndiis, ndiis, ibnd_start:ibnd_end ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hc ', ABS(ierr) )
   !
   ALLOCATE( sc( ndiis, ndiis, ibnd_start:ibnd_end ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate sc ', ABS(ierr) )
+  !
+  ALLOCATE( php( ibnd_start:ibnd_end, ndiis ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate php ', ABS(ierr) )
+  !
+  ALLOCATE( psp( ibnd_start:ibnd_end, ndiis ), STAT=ierr )
+  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate psp ', ABS(ierr) )
   !
   ALLOCATE( ew( nbnd ) )
   ALLOCATE( hw( nbnd ) )
@@ -99,20 +125,26 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ALLOCATE( conv( nbnd ) )
   !
   phi  = ZERO
-  dphi = ZERO
+  hphi = ZERO
+  IF ( uspp ) sphi = ZERO
   !
-  dpsi = ZERO
   hpsi = ZERO
   IF ( uspp ) spsi = ZERO
+  !
+  kpsi  = ZERO
+  hkpsi = ZERO
+  IF ( uspp ) skpsi = ZERO
+  !
+  hc = ZERO
+  sc = ZERO
+  !
+  php = 0.0_DP
+  psp = 0.0_DP
   !
   ew   = 0.0_DP
   hw   = 0.0_DP
   sw   = 0.0_DP
   conv = .FALSE.
-  !
-  hc   = ZERO
-  sc   = ZERO
-  vc   = ZERO
   !
   ! ... Initial eigenvalues
   !
@@ -125,10 +157,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   DO idiis = 1, ndiis
      !
      rmm_iter = rmm_iter + 1
-     !
-     ! ... Residual vectors : |R> = (H - e S) |psi>
-     !
-     CALL residuals( )
      !
      ! ... Perform DIIS
      !
@@ -151,12 +179,17 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   IF ( reorder ) CALL sort_vectors( )
   !
   DEALLOCATE( phi )
-  DEALLOCATE( dphi )
-  DEALLOCATE( dpsi )
+  DEALLOCATE( hphi )
+  IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( hpsi )
   IF ( uspp ) DEALLOCATE( spsi )
+  DEALLOCATE( kpsi )
+  DEALLOCATE( hkpsi )
+  IF ( uspp ) DEALLOCATE( skpsi )
   DEALLOCATE( hc )
   DEALLOCATE( sc )
+  DEALLOCATE( php )
+  DEALLOCATE( psp )
   DEALLOCATE( ew )
   DEALLOCATE( hw )
   DEALLOCATE( sw )
@@ -170,31 +203,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
 CONTAINS
   !
   !
-  SUBROUTINE residuals( )
-    !
-    IMPLICIT NONE
-    !
-    INTEGER :: ibnd
-    !
-    ! ... |R> = (H - e S) |psi>
-    !
-    IF ( uspp ) THEN
-       !
-       FORALL ( ibnd = ibnd_start:ibnd_end ) &
-       dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * spsi(:,ibnd)
-       !
-    ELSE
-       !
-       FORALL ( ibnd = ibnd_start:ibnd_end ) &
-       dpsi(:,ibnd) = hpsi(:,ibnd) - e(ibnd) * psi(:,ibnd)
-       !
-    END IF
-    !
-    RETURN
-    !
-  END SUBROUTINE residuals
-  !
-  !
   SUBROUTINE do_diis( idiis )
     !
     IMPLICIT NONE
@@ -203,29 +211,43 @@ CONTAINS
     !
     INTEGER                  :: ibnd
     INTEGER                  :: kdiis
+    COMPLEX(DP), ALLOCATABLE :: res1(:,:)
+    COMPLEX(DP), ALLOCATABLE :: res2(:)
     COMPLEX(DP), ALLOCATABLE :: vc(:)
     COMPLEX(DP), ALLOCATABLE :: tc(:,:)
     !
+    ALLOCATE( res1( kdmx, idiis ) )
+    ALLOCATE( res2( kdmx ) )
     IF ( idiis > 1 ) ALLOCATE( vc( idiis ) )
     ALLOCATE( tc( idiis, ibnd_start:ibnd_end ) )
     !
-    ! ... Save current wave functions and residual vectors
+    ! ... Save current wave functions and eigenvalues
     !
     phi (:,ibnd_start:ibnd_end,idiis) = psi (:,ibnd_start:ibnd_end)
-    dphi(:,ibnd_start:ibnd_end,idiis) = dpsi(:,ibnd_start:ibnd_end)
+    hphi(:,ibnd_start:ibnd_end,idiis) = hpsi(:,ibnd_start:ibnd_end)
+    IF ( uspp ) &
+    sphi(:,ibnd_start:ibnd_end,idiis) = spsi(:,ibnd_start:ibnd_end)
+    php   (ibnd_start:ibnd_end,idiis) = hw    (ibnd_start:ibnd_end)
+    psp   (ibnd_start:ibnd_end,idiis) = sw    (ibnd_start:ibnd_end)
     !
     ! ... <R_i|R_j>
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       CALL ZGEMV( 'C', kdim, idiis, ONE, dphi(1,ibnd,1), kdmx, &
-                   dphi(1,ibnd,idiis), 1, ZERO, hc(1,idiis,ibnd), 1 )
+       ! ... Residual vectors : |R> = (H - e S) |psi>
+       !
+       FORALL ( kdiis = 1:idiis ) &
+       res1(:,kdiis) = hphi(:,ibnd,kdiis) - php(ibnd,kdiis) * sphi(:,ibnd,kdiis)
+       res2(:)       = hphi(:,ibnd,idiis) - php(ibnd,idiis) * sphi(:,ibnd,idiis)
+       !
+       CALL ZGEMV( 'C', kdim, idiis, ONE, res1(1,1), kdmx, &
+                   res2(1), 1, ZERO, hc(1,idiis,ibnd), 1 )
        !
     END DO
     !
-    tc(1:idiis,ibnd_start:ibnd_end) = hc(1:idiis,idiis,ibnd_start:ibnd_end)
+    tc(:,:) = hc(:,idiis,:)
     CALL mp_sum( tc, intra_bgrp_comm )
-    hc(1:idiis,idiis,ibnd_start:ibnd_end) = tc(1:idiis,ibnd_start:ibnd_end)
+    hc(:,idiis,:) = tc(:,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -252,9 +274,9 @@ CONTAINS
        !
     END DO
     !
-    tc(1:idiis,ibnd_start:ibnd_end) = sc(1:idiis,idiis,ibnd_start:ibnd_end)
+    tc(:,:) = sc(:,idiis,:)
     CALL mp_sum( tc, intra_bgrp_comm )
-    sc(1:idiis,idiis,ibnd_start:ibnd_end) = tc(1:idiis,ibnd_start:ibnd_end)
+    sc(:,idiis,:) = tc(:,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -263,7 +285,7 @@ CONTAINS
        !
     END DO
     !
-    ! ... Update current wave functions and residual vectors
+    ! ... Update current wave functions
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -271,27 +293,41 @@ CONTAINS
           !
           ! ... solve Rv = eSv
           !
-          CALL diag_diis( ibnd, idiis, vc(:) )
+          IF ( me_bgrp == root_bgrp ) CALL diag_diis( ibnd, idiis, vc(:) )
+          CALL mp_bcast( vc, root_bgrp, intra_bgrp_comm )
           !
           psi (:,ibnd) = ZERO
-          dpsi(:,ibnd) = ZERO
+          hpsi(:,ibnd) = ZERO
+          IF ( uspp ) &
+          spsi(:,ibnd) = ZERO
+          kpsi(:,ibnd) = ZERO
           !
           DO kdiis = 1, idiis
              !
-             psi (:,ibnd) = vc(kdiis) * phi (:,ibnd,kdiis)
-             dpsi(:,ibnd) = vc(kdiis) * dphi(:,ibnd,kdiis)
+             psi (:,ibnd) = psi (:,ibnd) + vc(kdiis) * phi (:,ibnd,kdiis)
+             hpsi(:,ibnd) = hpsi(:,ibnd) + vc(kdiis) * hphi(:,ibnd,kdiis)
+             IF ( uspp ) &
+             spsi(:,ibnd) = spsi(:,ibnd) + vc(kdiis) * sphi(:,ibnd,kdiis)
+             !
+             res2(:) = hphi(:,ibnd,kdiis) - php(ibnd,kdiis) * sphi(:,ibnd,kdiis)
+             kpsi(:,ibnd) = kpsi(:,ibnd) + vc(kdiis) * res2(:)
              !
           END DO
           !
        ELSE
           !
           psi (:,ibnd) = phi (:,ibnd,1)
-          dpsi(:,ibnd) = dphi(:,ibnd,1)
+          hpsi(:,ibnd) = hphi(:,ibnd,1)
+          IF ( uspp ) &
+          spsi(:,ibnd) = sphi(:,ibnd,1)
+          kpsi(:,ibnd) = hphi(:,ibnd,1) - php(ibnd,1) * sphi(:,ibnd,1)
           !
        END IF
        !
     END DO
     !
+    DEALLOCATE( res1 )
+    DEALLOCATE( res2 )
     IF ( idiis > 1 ) DEALLOCATE( vc )
     DEALLOCATE( tc )
     !
@@ -409,10 +445,30 @@ CONTAINS
     !
     INTEGER :: ibnd
     !
+    ! ... Preconditioning vectors : K (H - e S) |psi>
+    !
     DO ibnd = ibnd_start, ibnd_end
        !
        ! TODO
-       ! TODO |psi> = |psi> + s * precondition |dpsi>
+       ! TODO
+       ! TODO
+       !
+    END DO
+    !
+    ! ... Operate the Hamiltonian : H K (H - eS) |psi>
+    !
+    CALL h_psi( npwx, npw, nbnd, kpsi, hkpsi )
+    !
+    ! ... Operate the Overlap : S K (H - eS) |psi>
+    !
+    IF ( uspp ) CALL s_psi( npwx, npw, nbnd, kpsi, skpsi )
+    !
+    ! ... Line searching for each band
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       ! TODO
+       ! TODO
        ! TODO
        !
     END DO
