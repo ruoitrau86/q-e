@@ -19,9 +19,10 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   USE constants, ONLY : eps14, eps16
   USE kinds,     ONLY : DP
+  USE funct,     ONLY : exx_is_active
   USE mp,        ONLY : mp_sum, mp_bcast
-  USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, me_bgrp, &
-                        root_bgrp, root_bgrp_id, set_bgrp_indices
+  USE mp_bands,  ONLY : inter_bgrp_comm, intra_bgrp_comm, me_bgrp, root_bgrp, &
+                        root_bgrp_id, use_bgrp_in_hpsi, set_bgrp_indices
   !
   IMPLICIT NONE
   !
@@ -485,6 +486,26 @@ CONTAINS
        ! TODO
        !
     END DO
+    !
+    ! ... Share kpsi for all band-groups
+    !
+    IF ( ( .NOT. use_bgrp_in_hpsi ) .OR. exx_is_active() ) THEN
+       !
+       DO ibnd = 1, ( ibnd_start - 1)
+          !
+          kpsi(:,ibnd) = ZERO
+          !
+       END DO
+       !
+       DO ibnd = ( ibnd_end + 1 ), nbnd
+          !
+          kpsi(:,ibnd) = ZERO
+          !
+       END DO
+       !
+       CALL mp_sum( kpsi, inter_bgrp_comm )
+       !
+    END IF
     !
     ! ... Operate the Hamiltonian : H K (H - eS) |psi>
     !
