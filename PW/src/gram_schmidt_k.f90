@@ -11,7 +11,8 @@
 #define MONE (-1._DP, 0._DP )
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
+SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
+                           uspp, eigen, reorder, nbsize )
   !--------------------------------------------------------------------------
   !
   ! ... Gram-Schmidt orthogonalization, for k-point calculations.
@@ -28,18 +29,23 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
+  REAL(DP),    INTENT(INOUT) :: e(nbnd)
   LOGICAL,     INTENT(IN)    :: uspp
+  LOGICAL,     INTENT(IN)    :: eigen
+  LOGICAL,     INTENT(IN)    :: reorder
   INTEGER,     INTENT(IN)    :: nbsize
   !
   ! ... local variables
   !
+  LOGICAL                  :: eigen_
   INTEGER                  :: kdim, kdmx
   INTEGER                  :: iblock, nblock
   INTEGER                  :: iblock_start, iblock_end
   INTEGER                  :: jblock_start, jblock_end
   INTEGER                  :: ibnd_start, ibnd_end
   INTEGER                  :: jbnd_start, jbnd_end
-  COMPLEX(DP), ALLOCATABLE :: phi(:,:), spsi(:,:), sphi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: phi(:,:), sphi(:,:)
   INTEGER,     ALLOCATABLE :: owner_bgrp_id(:)
   !
   IF ( npol == 1 ) THEN
@@ -51,6 +57,14 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
      !
      kdim = npwx*npol
      kdmx = npwx*npol
+     !
+  END IF
+  !
+  eigen = eigen_
+  !
+  IF ( reorder ) THEN
+     !
+     eigen_ = .TRUE.
      !
   END IF
   !
@@ -67,12 +81,11 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   END IF
   !
   ALLOCATE( phi ( kdmx, nbnd ) )
-  IF ( uspp ) ALLOCATE( spsi( kdmx, nbnd ) )
   IF ( uspp ) ALLOCATE( sphi( kdmx, nbnd ) )
   ALLOCATE( owner_bgrp_id( nblock ) )
   !
   phi = ZERO
-  IF ( uspp ) spsi = ZERO
+  !
   IF ( uspp ) sphi = ZERO
   !
   ! ... Set owers of blocks
@@ -88,15 +101,12 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   !
   CALL mp_max( owner_bgrp_id, inter_bgrp_comm )
   !
-  ! ... Operate the overlap : S |psi_j>
-  !
-  IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
-  !
   ! ... Set initial : |phi_j> = |psi_j>
   !
-  phi = psi
+  CALL ZCOPY( kdimx * nbnd, psi(1,1), 1, phi(1,1), 1 )
   !
-  IF ( uspp ) sphi = spsi
+  IF ( uspp ) &
+  CALL ZCOPY( kdimx * nbnd, spsi(1,1), 1, sphi(1,1), 1 )
   !
   ! ... Blocking loop
   !
@@ -132,10 +142,20 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, uspp, nbsize )
   !
   ! ... Copy psi <- phi
   !
-  psi = phi
+  CALL ZCOPY( kdimx * nbnd, phi(1,1), 1, psi(1,1), 1 )
+  !
+  IF ( uspp ) &
+  CALL ZCOPY( kdimx * nbnd, sphi(1,1), 1, spsi(1,1), 1 )
+  !
+  ! ... Calculate energy eigenvalues
+  !
+  IF ( eigen_ ) CALL energyeigen( )
+  !
+  ! ... Sort wave functions
+  !
+  IF ( reorder ) CALL sort_vectors( )
   !
   DEALLOCATE( phi )
-  IF ( uspp ) DEALLOCATE( spsi )
   IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( owner_bgrp_id )
   !
@@ -154,7 +174,7 @@ CONTAINS
     INTEGER                  :: ibnd
     COMPLEX(DP), ALLOCATABLE :: sc(:)
     REAL(DP)                 :: norm
-    REAL(DP),    EXTERNAL    :: ZDOTC
+    COMPLEX(DP), EXTERNAL    :: ZDOTC
     !
     ALLOCATE( sc( ibnd_start:ibnd_end ) )
     !
@@ -193,25 +213,25 @@ CONTAINS
        !
        IF ( uspp ) THEN
           !
-          norm = ZDOTC( kdim, phi(1,ibnd), 1, sphi(1,ibnd), 1 )
+          norm = DBLE( ZDOTC( kdim, phi(1,ibnd), 1, sphi(1,ibnd), 1 ) )
           !
        ELSE
           !
-          norm = ZDOTC( kdim, phi(1,ibnd), 1, phi(1,ibnd), 1 )
+          norm = DBLE( ZDOTC( kdim, phi(1,ibnd), 1, phi(1,ibnd), 1 ) )
           !
        END IF
        !
        CALL mp_sum( norm, intra_bgrp_comm )
        !
-       norm = SQRT( MAX( norm, 0.0_DP ) )
+       norm = SQRT( MAX( norm, 0._DP ) )
        !
        IF ( norm < eps16 ) &
        CALL errore( ' gram_schmidt_k ', ' vectors are linear dependent ', 1 )
        !
-       phi(:,ibnd) = phi(:,ibnd) / norm
+       CALL ZDSCAL( kdim, 1._DP / norm, phi(1,ibnd), 1 )
        !
        IF ( uspp ) &
-       sphi(:,ibnd) = sphi(:,ibnd) / norm
+       CALL ZDSCAL( kdim, 1._DP / norm, sphi(1,ibnd), 1 )
        !
     END DO
     !
@@ -268,6 +288,75 @@ CONTAINS
     RETURN
     !
   END SUBROUTINE project_offdiag
+  !
+  !
+  SUBROUTINE energyeigen( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER                  :: ibnd, ibnd_start, ibnd_end
+    COMPLEX(DP), ALLOCATABLE :: hpsi(:,:)
+    COMPLEX(DP), EXTERNAL    :: ZDOTC
+    !
+    ALLOCATE( hpsi ( kdmx, nbnd ) )
+    !
+    ! ... H |psi>
+    !
+    CALL h_psi( npwx, npw, nbnd, psi, hpsi )
+    !
+    ! ... <psi| H |psi>
+    !
+    CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
+    !
+    e(:) = 0._DP
+    !
+    FORALL ( ibnd = ibnd_start:ibnd_end ) &
+    e(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
+    !
+    CALL mp_sum( e(ibnd_start:ibnd_end), intra_bgrp_comm )
+    CALL mp_sum( e, inter_bgrp_comm )
+    !
+    DEALLOCATE( hpsi )
+    !
+    RETURN
+    !
+  END SUBROUTINE energyeigen
+  !
+  !
+  SUBROUTINE sort_vectors( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER  :: ibnd
+    INTEGER  :: nswap
+    REAL(DP) :: e0
+    !
+10  nswap = 0
+    !
+    DO ibnd = 2, nbnd
+       !
+       IF ( e(ibnd) < e(ibnd-1) ) THEN
+          !
+          nswap = nswap + 1
+          !
+          e0        = e(ibnd)
+          e(ibnd)   = e(ibnd-1)
+          e(ibnd-1) = e0
+          !
+          CALL ZSWAP( kdim, psi(1,ibnd), 1, psi(1,ibnd-1), 1 )
+          !
+          IF ( uspp ) &
+          CALL ZSWAP( kdim, spsi(1,ibnd), 1, spsi(1,ibnd-1), 1 )
+          !
+       END IF
+       !
+    END DO
+    !
+    IF ( nswap > 0 ) GOTO 10
+    !
+    RETURN
+    !
+  END SUBROUTINE sort_vectors
   !
   !
 END SUBROUTINE gram_schmidt_k

@@ -6,10 +6,11 @@
 ! in the root directory of the present distribution,
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
-#define ZERO ( 0.D0, 0.D0 )
+#define ZERO ( 0._DP, 0._DP )
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
+SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, spsi, e, &
+                               uspp, eigen, reorder, gstart, nbsize )
   !--------------------------------------------------------------------------
   !
   ! ... Gram-Schmidt orthogonalization, for Gamma-only calculations.
@@ -26,19 +27,32 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: spsi(npwx,nbnd)
+  REAL(DP),    INTENT(OUT)   :: e(nbnd)
   LOGICAL,     INTENT(IN)    :: uspp
+  LOGICAL,     INTENT(IN)    :: eigen
+  LOGICAL,     INTENT(IN)    :: reorder
   INTEGER,     INTENT(IN)    :: gstart
   INTEGER,     INTENT(IN)    :: nbsize
   !
   ! ... local variables
   !
+  LOGICAL                  :: eigen_
   INTEGER                  :: iblock, nblock
   INTEGER                  :: iblock_start, iblock_end
   INTEGER                  :: jblock_start, jblock_end
   INTEGER                  :: ibnd_start, ibnd_end
   INTEGER                  :: jbnd_start, jbnd_end
-  COMPLEX(DP), ALLOCATABLE :: phi(:,:), spsi(:,:), sphi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: phi(:,:), sphi(:,:)
   INTEGER,     ALLOCATABLE :: owner_bgrp_id(:)
+  !
+  eigen = eigen_
+  !
+  IF ( reorder ) THEN
+     !
+     eigen_ = .TRUE.
+     !
+  END IF
   !
   nblock = nbnd / nbsize
   IF ( MOD( nbnd, nbsize ) /= 0 ) nblock = nblock + 1
@@ -53,12 +67,11 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   END IF
   !
   ALLOCATE( phi ( npwx, nbnd ) )
-  IF ( uspp ) ALLOCATE( spsi( npwx, nbnd ) )
   IF ( uspp ) ALLOCATE( sphi( npwx, nbnd ) )
   ALLOCATE( owner_bgrp_id( nblock ) )
   !
   phi = ZERO
-  IF ( uspp ) spsi = ZERO
+  !
   IF ( uspp ) sphi = ZERO
   !
   ! ... Set owers of blocks
@@ -78,20 +91,16 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   !
   IF ( gstart == 2 ) psi(1,1:nbnd) = CMPLX( DBLE( psi(1,1:nbnd) ), 0._DP, kind=DP )
   !
-  ! ... Operate the overlap : S |psi_j>
-  !
-  IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
-  !
   ! ... Set initial : |phi_j> = |psi_j>
   !
-  phi = psi
+  CALL DCOPY( 2 * npwx * nbnd, psi(1,1), 1, phi(1,1), 1 )
   !
   ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
   IF ( gstart == 2 ) phi(1,1:nbnd) = CMPLX( DBLE( phi(1,1:nbnd) ), 0._DP, kind=DP )
   !
   IF ( uspp ) THEN
      !
-     sphi = spsi
+     CALL DCOPY( 2 * npwx * nbnd, spsi(1,1), 1, sphi(1,1), 1 )
      !
      ! NOTE: set Im[ S*phi(G=0) ] - needed for numerical stability
      IF ( gstart == 2 ) sphi(1,1:nbnd) = CMPLX( DBLE( sphi(1,1:nbnd) ), 0._DP, kind=DP )
@@ -132,10 +141,20 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, uspp, gstart, nbsize )
   !
   ! ... Copy psi <- phi
   !
-  psi = phi
+  CALL DCOPY( 2 * npwx * nbnd, phi(1,1), 1, psi(1,1), 1 )
+  !
+  IF ( uspp ) &
+  CALL DCOPY( 2 * npwx * nbnd, sphi(1,1), 1, spsi(1,1), 1 )
+  !
+  ! ... Calculate energy eigenvalues
+  !
+  IF ( eigen_ ) CALL energyeigen( )
+  !
+  ! ... Sort wave functions
+  !
+  IF ( reorder ) CALL sort_vectors( )
   !
   DEALLOCATE( phi )
-  IF ( uspp ) DEALLOCATE( spsi )
   IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( owner_bgrp_id )
   !
@@ -210,13 +229,13 @@ CONTAINS
        !
        IF ( uspp ) THEN
           !
-          norm = 2.0_DP * DDOT( 2 * npw, phi(1,ibnd), 1, sphi(1,ibnd), 1 )
+          norm = 2._DP * DDOT( 2 * npw, phi(1,ibnd), 1, sphi(1,ibnd), 1 )
           !
           IF ( gstart == 2 ) norm = norm - DBLE( phi(1,ibnd) ) * DBLE ( sphi(1,ibnd) )
           !
        ELSE
           !
-          norm = 2.0_DP * DDOT( 2 * npw, phi(1,ibnd), 1, phi(1,ibnd), 1 )
+          norm = 2._DP * DDOT( 2 * npw, phi(1,ibnd), 1, phi(1,ibnd), 1 )
           !
           IF ( gstart == 2 ) norm = norm - DBLE( phi(1,ibnd) ) * DBLE ( phi(1,ibnd) )
           !
@@ -224,19 +243,19 @@ CONTAINS
        !
        CALL mp_sum( norm, intra_bgrp_comm )
        !
-       norm = SQRT( MAX( norm, 0.0_DP ) )
+       norm = SQRT( MAX( norm, 0._DP ) )
        !
        IF ( norm < eps16 ) &
        CALL errore( ' gram_schmidt_gamma ', ' vectors are linear dependent ', 1 )
        !
-       phi(:,ibnd) = phi(:,ibnd) / norm
+       CALL DSCAL( 2 * npw, 1._DP / norm, phi(1,ibnd), 1 )
        !
        ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
        IF ( gstart == 2 ) phi(1,ibnd) = CMPLX( DBLE( phi(1,ibnd) ), 0._DP, kind=DP )
        !
        IF ( uspp ) THEN
           !
-          sphi(:,ibnd) = sphi(:,ibnd) / norm
+          CALL DSCAL( 2 * npw, 1._DP / norm, sphi(1,ibnd), 1 )
           !
           ! NOTE: set Im[ S*phi(G=0) ] - needed for numerical stability
           IF ( gstart == 2 ) sphi(1,ibnd) = CMPLX( DBLE( sphi(1,ibnd) ), 0._DP, kind=DP )
@@ -317,6 +336,80 @@ CONTAINS
     RETURN
     !
   END SUBROUTINE project_offdiag
+  !
+  !
+  SUBROUTINE energyeigen( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER                  :: ibnd, ibnd_start, ibnd_end
+    COMPLEX(DP), ALLOCATABLE :: hpsi(:,:)
+    REAL(DP),    EXTERNAL    :: DDOT
+    !
+    ALLOCATE( hpsi ( npwx, nbnd ) )
+    !
+    ! ... H |psi>
+    !
+    CALL h_psi( npwx, npw, nbnd, psi, hpsi )
+    !
+    ! ... <psi| H |psi>
+    !
+    CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
+    !
+    e(:) = 0._DP
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       e(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+       !
+       IF ( gstart == 2 ) e(ibnd) = e(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( hpsi(1,ibnd) )
+       !
+    END DO
+    !
+    CALL mp_sum( e(ibnd_start:ibnd_end), intra_bgrp_comm )
+    CALL mp_sum( e, inter_bgrp_comm )
+    !
+    DEALLOCATE( hpsi )
+    !
+    RETURN
+    !
+  END SUBROUTINE energyeigen
+  !
+  !
+  SUBROUTINE sort_vectors( )
+    !
+    IMPLICIT NONE
+    !
+    INTEGER  :: ibnd
+    INTEGER  :: nswap
+    REAL(DP) :: e0
+    !
+10  nswap = 0
+    !
+    DO ibnd = 2, nbnd
+       !
+       IF ( e(ibnd) < e(ibnd-1) ) THEN
+          !
+          nswap = nswap + 1
+          !
+          e0        = e(ibnd)
+          e(ibnd)   = e(ibnd-1)
+          e(ibnd-1) = e0
+          !
+          CALL DSWAP( 2 * npw, psi(1,ibnd), 1, psi(1,ibnd-1), 1 )
+          !
+          IF ( uspp ) &
+          CALL DSWAP( 2 * npw, spsi(1,ibnd), 1, spsi(1,ibnd-1), 1 )
+          !
+       END IF
+       !
+    END DO
+    !
+    IF ( nswap > 0 ) GOTO 10
+    !
+    RETURN
+    !
+  END SUBROUTINE sort_vectors
   !
   !
 END SUBROUTINE gram_schmidt_gamma

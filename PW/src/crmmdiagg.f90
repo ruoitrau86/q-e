@@ -10,8 +10,8 @@
 #define ONE  ( 1._DP, 0._DP )
 !
 !----------------------------------------------------------------------------
-SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
-                      ethr, ndiis, uspp, reorder, notconv, rmm_iter )
+SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
+                      g2kin, btype, ethr, ndiis, uspp, notconv, rmm_iter )
   !----------------------------------------------------------------------------
   !
   ! ... Iterative diagonalization of a complex hermitian matrix
@@ -30,13 +30,13 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   INTEGER,     INTENT(IN)    :: npwx, npw, nbnd, npol
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
-  REAL(DP),    INTENT(INOUT) :: e(nbnd)
+  COMPLEX(DP), INTENT(OUT)   :: spsi(npwx*npol,nbnd)
+  REAL(DP),    INTENT(OUT)   :: e(nbnd)
+  REAL(DP),    INTENT(IN)    :: g2kin(npwx)
   INTEGER,     INTENT(IN)    :: btype(nbnd)
-  REAL(DP),    INTENT(IN)    :: precondition(npwx*npol)
   REAL(DP),    INTENT(IN)    :: ethr
   INTEGER,     INTENT(IN)    :: ndiis
   LOGICAL,     INTENT(IN)    :: uspp
-  LOGICAL,     INTENT(IN)    :: reorder
   INTEGER,     INTENT(OUT)   :: notconv
   INTEGER,     INTENT(OUT)   :: rmm_iter
   !
@@ -44,11 +44,11 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   !
   INTEGER                  :: ierr
   INTEGER                  :: idiis
+  INTEGER                  :: kdim, kdmx
   INTEGER                  :: ibnd_start, ibnd_end, ibnd_size
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
-  COMPLEX(DP), ALLOCATABLE :: kpsi(:,:), hkpsi(:,:), skpsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), kpsi(:,:), hkpsi(:,:), skpsi(:,:)
   COMPLEX(DP), ALLOCATABLE :: hc(:,:,:), sc(:,:,:)
   REAL(DP),    ALLOCATABLE :: php(:,:), psp(:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
@@ -94,13 +94,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ALLOCATE( hpsi( kdmx, nbnd ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hpsi ', ABS(ierr) )
   !
-  IF ( uspp ) THEN
-     !
-     ALLOCATE( spsi( kdmx, nbnd ), STAT=ierr )
-     IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate spsi ', ABS(ierr) )
-     !
-  END IF
-  !
   ALLOCATE( kpsi( kdmx, nbnd ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate kpsi ', ABS(ierr) )
   !
@@ -135,9 +128,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   hphi = ZERO
   IF ( uspp ) sphi = ZERO
   !
-  hpsi = ZERO
-  IF ( uspp ) spsi = ZERO
-  !
+  hpsi  = ZERO
+  spsi  = ZERO
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
@@ -145,12 +137,13 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   hc = ZERO
   sc = ZERO
   !
-  php = 0.0_DP
-  psp = 0.0_DP
+  php = 0._DP
+  psp = 0._DP
   !
-  ew   = 0.0_DP
-  hw   = 0.0_DP
-  sw   = 0.0_DP
+  e    = 0._DP
+  ew   = 0._DP
+  hw   = 0._DP
+  sw   = 0._DP
   conv = .FALSE.
   !
   ! ... Initial eigenvalues
@@ -160,6 +153,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
   ! ... RMM-DIIS's loop
   !
   rmm_iter = 0
+  notconv  = 0
   !
   DO idiis = 1, ndiis
      !
@@ -181,15 +175,10 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, e, btype, precondition, &
      !
   END DO
   !
-  ! ... Sort eigenvalues and eigenvectors
-  !
-  IF ( reorder ) CALL sort_vectors( )
-  !
   DEALLOCATE( phi )
   DEALLOCATE( hphi )
   IF ( uspp ) DEALLOCATE( sphi )
   DEALLOCATE( hpsi )
-  IF ( uspp ) DEALLOCATE( spsi )
   DEALLOCATE( kpsi )
   DEALLOCATE( hkpsi )
   IF ( uspp ) DEALLOCATE( skpsi )
@@ -218,14 +207,15 @@ CONTAINS
     !
     INTEGER                  :: ibnd
     INTEGER                  :: kdiis
+    REAL(DP)                 :: norm
     COMPLEX(DP)              :: ec
-    COMPLEX(DP), ALLOCATABLE :: res1(:)
-    COMPLEX(DP), ALLOCATABLE :: res2(:,:)
+    COMPLEX(DP), ALLOCATABLE :: vec1(:)
+    COMPLEX(DP), ALLOCATABLE :: vec2(:,:)
     COMPLEX(DP), ALLOCATABLE :: vc(:)
     COMPLEX(DP), ALLOCATABLE :: tc(:,:)
     !
-    ALLOCATE( res1( kdmx ) )
-    ALLOCATE( res2( kdmx, idiis ) )
+    ALLOCATE( vec1( kdmx ) )
+    ALLOCATE( vec2( kdmx, idiis ) )
     IF ( idiis > 1 ) ALLOCATE( vc( idiis ) )
     ALLOCATE( tc( idiis, ibnd_start:ibnd_end ) )
     !
@@ -248,17 +238,17 @@ CONTAINS
        DO kdiis = 1, idiis
           !
           ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
-          CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, res2(1,kdiis), 1 )
-          CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, res2(1,kdiis), 1 )
+          CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+          CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
           !
        END DO
        !
        ec = CMPLX( php(ibnd,idiis), 0._DP, kind=DP )
-       CALL ZCOPY( kdim, hphi(1,ibnd,idiis), 1, res1(1), 1 )
-       CALL ZAXPY( kdim, -ec, sphi(1,ibnd,idiis), 1, res1(1), 1 )
+       CALL ZCOPY( kdim, hphi(1,ibnd,idiis), 1, vec1(1), 1 )
+       CALL ZAXPY( kdim, -ec, sphi(1,ibnd,idiis), 1, vec1(1), 1 )
        !
-       CALL ZGEMV( 'C', kdim, idiis, ONE, res2(1,1), kdmx, &
-                   res1(1), 1, ZERO, hc(1,idiis,ibnd), 1 )
+       CALL ZGEMV( 'C', kdim, idiis, ONE, vec2(1,1), kdmx, &
+                   vec1(1), 1, ZERO, hc(1,idiis,ibnd), 1 )
        !
     END DO
     !
@@ -277,17 +267,24 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       DO kdiis = 1, idiis
+          !
+          CALL ZCOPY( kdim, phi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+          !
+       END DO
+       !
        IF ( uspp ) THEN
           !
-          CALL ZGEMV( 'C', kdim, idiis, ONE, phi(1,ibnd,1), kdmx, &
-                      sphi(1,ibnd,idiis), 1, ZERO, sc(1,idiis,ibnd), 1 )
+          CALL ZCOPY( kdim, sphi(1,ibnd,idiis), 1, vec1(1), 1 )
           !
        ELSE
           !
-          CALL ZGEMV( 'C', kdim, idiis, ONE, phi(1,ibnd,1), kdmx, &
-                      phi(1,ibnd,idiis), 1, ZERO, sc(1,idiis,ibnd), 1 )
+          CALL ZCOPY( kdim, phi(1,ibnd,idiis), 1, vec1(1), 1 )
           !
        END IF
+       !
+       CALL ZGEMV( 'C', kdim, idiis, ONE, vec2(1,1), kdmx, &
+                   vec1(1), 1, ZERO, sc(1,idiis,ibnd), 1 )
        !
     END DO
     !
@@ -331,13 +328,21 @@ CONTAINS
              ! ... Residual vectors
              !
              ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
-             CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, res1(1), 1 )
-             CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, res1(1), 1 )
-             CALL ZAXPY( kdim, vc(kdiis), res1(1), 1, kpsi(1,ibnd), 1 )
+             CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, vec1(1), 1 )
+             CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, vec1(1), 1 )
+             CALL ZAXPY( kdim, vc(kdiis), vec1(1), 1, kpsi(1,ibnd), 1 )
              !
           END DO
           !
        ELSE
+          !
+          ! ... Wave functions
+          !
+          norm = SQRT( sw(ibnd) )
+          CALL ZDSCAL( kdim, 1._DP / norm, psi (1,ibnd), 1 )
+          CALL ZDSCAL( kdim, 1._DP / norm, hpsi(1,ibnd), 1 )
+          IF ( uspp ) &
+          CALL ZDSCAL( kdim, 1._DP / norm, spsi(1,ibnd), 1 )
           !
           ! ... Residual vectors
           !
@@ -349,8 +354,8 @@ CONTAINS
        !
     END DO
     !
-    DEALLOCATE( res1 )
-    DEALLOCATE( res2 )
+    DEALLOCATE( vec1 )
+    DEALLOCATE( vec2 )
     IF ( idiis > 1 ) DEALLOCATE( vc )
     DEALLOCATE( tc )
     !
@@ -466,7 +471,11 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER               :: ibnd
+    INTEGER               :: ibnd, ig, ipol
+    REAL(DP)              :: psir, psii, psi2
+    REAL(DP)              :: kdiag, k1, k2
+    REAL(DP)              :: x, x2, x3, x4
+    REAL(DP), ALLOCATABLE :: ekin(:)
     REAL(DP)              :: a, b
     REAL(DP)              :: ene0, ene1
     REAL(DP)              :: step, norm
@@ -479,17 +488,58 @@ CONTAINS
     !
     COMPLEX(DP), EXTERNAL :: ZDOTC
     !
+    ALLOCATE( ekin( ibnd_start:ibnd_end ) )
     ALLOCATE( hmat( 3, ibnd_start:ibnd_end ) )
     ALLOCATE( smat( 3, ibnd_start:ibnd_end ) )
     ALLOCATE( coef( 2, ibnd_start:ibnd_end ) )
     !
-    ! ... Preconditioning vectors : K (H - e S) |psi>
+    ! ... Kinetic energy
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       ! TODO
-       ! TODO
-       ! TODO
+       ekin(ibnd) = 0._DP
+       !
+       DO ipol = 1, npol
+          !
+          DO ig = 1, npw
+             !
+             psir = DBLE ( psi(ig+(ipol-1)*npwx,ibnd) )
+             psii = AIMAG( psi(ig+(ipol-1)*npwx,ibnd) )
+             psi2 = psir * psir + psii * psii
+             ekin(ibnd) = ekin(ibnd) + g2kin(ig) * psi2
+             !
+          END DO
+          !
+       END DO
+       !
+    END DO
+    !
+    CALL mp_sum( ekin, intra_bgrp_comm )
+    !
+    ! ... Preconditioning vectors : K (H - e S) |psi>
+    !
+    ! ... G.Kresse and J.Furthmuller, PRB 54, 11169 (1996)
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       DO ipol = 1, npol
+          !
+          DO ig = 1, npw
+             !
+             x  = g2kin(ig) / ( 1.5_DP * ekin(ibnd) )
+             x2 = x * x
+             x3 = x * x2
+             x4 = x * x3
+             !
+             k1 = 27._DP + 18._DP * x + 12._DP * x2 + 8._DP * x3
+             k2 = k1 + 16._DP * x4
+             kdiag = ( -4._DP / 3._DP / ekin(ibnd) ) * k1 / k2
+             !
+             kpsi(ig+(ipol-1)*npwx,ibnd) = kdiag * kpsi(ig+(ipol-1)*npwx,ibnd)
+             !
+          END DO
+          !
+       END DO
        !
     END DO
     !
@@ -629,10 +679,10 @@ CONTAINS
        !
     END DO
     !
+    DEALLOCATE( ekin )
     DEALLOCATE( hmat )
     DEALLOCATE( smat )
-    DEALLOCATE( coef1 )
-    DEALLOCATE( coef2 )
+    DEALLOCATE( coef )
     !
     RETURN
     !
@@ -660,19 +710,19 @@ CONTAINS
        ! ... Matrix elements
        !
        FORALL ( ibnd = ibnd_start:ibnd_end ) &
-       hw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+       hw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
        !
        CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
        !
        IF ( uspp ) THEN
           !
           FORALL ( ibnd = ibnd_start:ibnd_end ) &
-          sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
+          sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 ) )
           !
        ELSE
           !
           FORALL ( ibnd = ibnd_start:ibnd_end ) &
-          sw(ibnd) = ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 )
+          sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 ) )
           !
        END IF
        !
@@ -685,7 +735,7 @@ CONTAINS
     IF( ANY( sw(ibnd_start:ibnd_end) <= eps16 ) ) &
     CALL errore( ' crmmdiagg ', ' sw <= 0 ', 1 )
     !
-    ew(1:nbnd) = 0.0_DP
+    ew(1:nbnd) = 0._DP
     ew(ibnd_start:ibnd_end) = hw(ibnd_start:ibnd_end) / sw(ibnd_start:ibnd_end)
     !
     CALL mp_sum( ew, inter_bgrp_comm )
@@ -711,46 +761,6 @@ CONTAINS
     RETURN
     !
   END SUBROUTINE eigenvalues
-  !
-  !
-  SUBROUTINE sort_vectors( )
-    !
-    IMPLICIT NONE
-    !
-    INTEGER                  :: ibnd
-    INTEGER                  :: nswap
-    REAL(DP)                 :: e0
-    COMPLEX(DP), ALLOCATABLE :: psi0(:)
-    !
-    ALLOCATE( psi0( kdmx ) )
-    !
-20  nswap = 0
-    !
-    DO ibnd = 2, nbnd
-       !
-       IF ( e(ibnd) < e(ibnd-1) ) THEN
-          !
-          nswap = nswap + 1
-          !
-          e0        = e(ibnd)
-          e(ibnd)   = e(ibnd-1)
-          e(ibnd-1) = e0
-          !
-          psi0(:)       = psi(:,ibnd)
-          psi(:,ibnd)   = psi(:,ibnd-1)
-          psi(:,ibnd-1) = psi0
-          !
-       END IF
-       !
-    END DO
-    !
-    IF ( nswap > 0 ) GOTO 20
-    !
-    DEALLOCATE( psi0 )
-    !
-    RETURN
-    !
-  END SUBROUTINE sort_vectors
   !
   !
 END SUBROUTINE crmmdiagg
