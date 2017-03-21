@@ -55,6 +55,7 @@ compute_qdipol.o \
 compute_qdipol_so.o \
 compute_ux.o \
 coset.o \
+crmmdiagg.o \
 d_matrix.o \
 data_structure.o \
 data_structure_custom.o \
@@ -97,6 +98,9 @@ gen_us_dy.o \
 get_locals.o \
 gk_sort.o \
 gradcorr.o \
+gram_schmidt.o \
+gram_schmidt_k.o \
+gram_schmidt_gamma.o \
 gweights.o \
 g2_kin.o \
 h_epsi_her_apply.o \
@@ -187,6 +191,7 @@ rho2zeta.o \
 rotate_wfc.o \
 rotate_wfc_k.o \
 rotate_wfc_gamma.o \
+rrmmdiagg.o \
 ruotaijk.o \
 run_pwscf.o \
 s_1psi.o \
