@@ -62,7 +62,7 @@ SUBROUTINE print_clock_pw()
    CALL print_clock( 'vdW_energy' )
    CALL print_clock( 'vdW_ffts' )
    CALL print_clock( 'vdW_v' )
-   
+
    !
    WRITE( stdout, '(/5x,"Called by c_bands:")' )
    CALL print_clock( 'init_us_2' )
@@ -72,13 +72,21 @@ SUBROUTINE print_clock_pw()
       ELSE
          CALL print_clock( 'cegterg' )
       ENDIF
-   ELSE 
+   ELSE IF ( isolve == 0 ) THEN
       IF ( gamma_only ) THEN
          CALL print_clock( 'rcgdiagg' )
       ELSE
          CALL print_clock( 'ccgdiagg' )
       ENDIF
       CALL print_clock( 'wfcrot' )
+   ELSE IF ( isolve == 2 ) THEN
+      IF ( gamma_only ) THEN
+         CALL print_clock( 'rrmmdiagg' )
+      ELSE
+         CALL print_clock( 'crmmdiagg' )
+      ENDIF
+      CALL print_clock( 'wfcrot' )
+      CALL print_clock( 'gsorth' )
    ENDIF
    !
    !IF ( iverbosity > 0)  THEN
@@ -89,7 +97,7 @@ SUBROUTINE print_clock_pw()
    !
    IF ( isolve == 0 ) THEN
       WRITE( stdout, '(/5x,"Called by *egterg:")' )
-   ELSE 
+   ELSE
       WRITE( stdout, '(/5x,"Called by *cgdiagg:")' )
    END IF
    !
@@ -153,7 +161,7 @@ SUBROUTINE print_clock_pw()
    CALL print_clock( 'fftcw' )
    CALL print_clock( 'interpolate' )
    CALL print_clock( 'davcio' )
-   !    
+   !
    WRITE( stdout, * )
    !
 #if defined (__MPI)
@@ -177,7 +185,7 @@ SUBROUTINE print_clock_pw()
       CALL print_clock( 'exx_grid' )
       CALL print_clock( 'exxinit' )
       CALL print_clock( 'vexx' )
-!civn 
+!civn
       CALL print_clock( 'matcalc' )
       CALL print_clock( 'aceupdate' )
       CALL print_clock( 'vexxace' )

@@ -936,6 +936,10 @@ SUBROUTINE iosys()
      isolve = 0
      david = diago_david_ndim
      !
+  CASE ( 'rmm', 'rmm-diis' )
+     !
+     isolve = 2
+     !
   CASE DEFAULT
      !
      CALL errore( 'iosys', 'diagonalization ' // &

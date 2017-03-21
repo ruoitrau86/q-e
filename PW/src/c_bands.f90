@@ -52,7 +52,7 @@ SUBROUTINE c_bands( iter )
   IF ( restart ) CALL restart_in_cbands(ik_, ethr, avg_iter, et )
   !
   ! ... If restarting, calculated wavefunctions have to be read from file
-  ! ... (not needed for a single k-point: this is done in wfcinit, 
+  ! ... (not needed for a single k-point: this is done in wfcinit,
   ! ...  directly from file, in order to avoid wasting memory)
   !
   DO ik = 1, ik_
@@ -64,6 +64,8 @@ SUBROUTINE c_bands( iter )
      WRITE( stdout, '(5X,"Davidson diagonalization with overlap")' )
   ELSE IF ( isolve == 1 ) THEN
      WRITE( stdout, '(5X,"CG style diagonalization")')
+  ELSE IF ( isolve == 2 ) THEN
+     WRITE( stdout, '(5X,"RMM-DIIS diagonalization")')
   ELSE
      CALL errore ( 'c_bands', 'invalid type of diagonalization', isolve)
   END IF
@@ -136,9 +138,10 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
   !----------------------------------------------------------------------------
   !
   ! ... Driver routine for diagonalization at each k-point
-  ! ... Two types of iterative diagonalizations are currently used:
+  ! ... Three types of iterative diagonalizations are currently used:
   ! ... a) Davidson algorithm (all-band)
   ! ... b) Conjugate Gradient (band-by-band)
+  ! ... c) RMM-DIIS algorithm (all-band)
   ! ...
   ! ... internal procedures :
   !
@@ -179,14 +182,18 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
   !
   REAL (KIND=DP) :: cg_iter
   ! (weighted) number of iterations in Conjugate-Gradient
-  INTEGER :: npw, ig, dav_iter, ntry, notconv
+  INTEGER :: npw, ig, dav_iter, rmm_iter, ntry, notconv
   ! number of iterations in Davidson
+  ! number of iterations in RMM-DIIS
   ! number or repeated call to diagonalization in case of non convergence
   ! number of notconverged elements
   INTEGER :: ierr, ipw, ibnd, ibnd_start, ibnd_end
   !
   LOGICAL :: lrot
   ! .TRUE. if the wfc have already be rotated
+  !
+  COMPLEX (KIND=DP), ALLOCATABLE :: sevc(:,:)
+  ! overlap x wavefunctions, only for RMM-DIIS
   !
   ALLOCATE( h_diag( npwx, npol ), STAT=ierr )
   IF( ierr /= 0 ) &
@@ -287,6 +294,48 @@ CONTAINS
           !
        END DO CG_loop
        !
+    ELSE IF ( isolve == 2 ) THEN
+       !
+       ! ... RMM-DIIS diagonalization
+       !
+       ALLOCATE( sevc( npwx, nbnd ) )
+       !
+       ntry = 0
+       !
+       RMM_loop : DO
+          !
+          lrot = ( iter == 1 .AND. ntry == 0 )
+          !
+          IF ( .NOT. lrot ) THEN
+             !
+             CALL rotate_wfc ( npwx, npw, nbnd, gstart, nbnd, evc, npol, okvan, evc, et(1,ik) )
+             !
+             avg_iter = avg_iter + 1.D0
+             !
+          END IF
+          !
+          CALL rrmmdiagg( npwx, npw, nbnd, evc, sevc, et(1,ik), &
+               g2kin(1), btype(1,ik), ethr, ndiis, okvan, gstart, notconv, rmm_iter )
+          !
+          avg_iter = avg_iter + rmm_iter
+          !
+          ntry = ntry + 1
+          !
+          ! ... exit condition
+          !
+          IF ( test_exit_cond() ) EXIT  RMM_loop
+          !
+       END DO RMM_loop
+       !
+       ! ... Gram-Schmidt orthogonalization
+       !
+       CALL gram_schmidt( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
+                          okvan, .TRUE., .NOT. lscf, gstart, nbsize )
+       !
+       avg_iter = avg_iter + 1.D0
+       !
+       DEALLOCATE( sevc )
+       !
     ELSE
        !
        ! ... Davidson diagonalization
@@ -373,7 +422,7 @@ CONTAINS
        IF ( okvan ) THEN
           !
           call allocate_bec_type(nkb,nbnd,bec_evcel)
-          
+
           !
           CALL calbec(npw, vkb, evcel, bec_evcel)
           !
@@ -421,6 +470,48 @@ CONTAINS
           IF ( test_exit_cond() ) EXIT  CG_loop
           !
        END DO CG_loop
+       !
+    ELSE IF ( isolve == 2 ) THEN
+       !
+       ! ... RMM-DIIS diagonalization
+       !
+       ALLOCATE( sevc( npwx*npol, nbnd ) )
+       !
+       ntry = 0
+       !
+       RMM_loop : DO
+          !
+          lrot = ( iter == 1 .AND. ntry == 0 )
+          !
+          IF ( .NOT. lrot ) THEN
+             !
+             CALL rotate_wfc ( npwx, npw, nbnd, gstart, nbnd, evc, npol, okvan, evc, et(1,ik) )
+             !
+             avg_iter = avg_iter + 1.D0
+             !
+          END IF
+          !
+          CALL crmmdiagg( npwx, npw, nbnd, npol, evc, sevc, et(i1,ik),
+               g2kin(1), btype(1,ik), ethr, ndiis, okvan, notconv, rmm_iter )
+          !
+          avg_iter = avg_iter + rmm_iter
+          !
+          ntry = ntry + 1
+          !
+          ! ... exit condition
+          !
+          IF ( test_exit_cond() ) EXIT  RMM_loop
+          !
+       END DO RMM_loop
+       !
+       ! ... Gram-Schmidt orthogonalization
+       !
+       CALL gram_schmidt( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
+                          okvan, .TRUE., .NOT. lscf, gstart, nbsize )
+       !
+       avg_iter = avg_iter + 1.D0
+       !
+       DEALLOCATE( sevc )
        !
     ELSE
        !
@@ -473,7 +564,7 @@ CONTAINS
        !
     END IF
     !
-    IF ( lelfield .AND. okvan ) call deallocate_bec_type( bec_evcel) 
+    IF ( lelfield .AND. okvan ) call deallocate_bec_type( bec_evcel)
     !
     RETURN
     !
@@ -611,6 +702,8 @@ SUBROUTINE c_bands_nscf( )
      WRITE( stdout, '(5X,"Davidson diagonalization with overlap")' )
   ELSE IF ( isolve == 1 ) THEN
      WRITE( stdout, '(5X,"CG style diagonalization")')
+  ELSE IF ( isolve == 2 ) THEN
+     WRITE( stdout, '(5X,"RMM-DIIS diagonalization")')
   ELSE
      CALL errore ( 'c_bands', 'invalid type of diagonalization', isolve)
   END IF
@@ -625,7 +718,7 @@ SUBROUTINE c_bands_nscf( )
      current_k = ik
      IF ( lsda ) current_spin = isk(ik)
      call g2_kin( ik )
-     ! 
+     !
      ! ... More stuff needed by the hamiltonian: nonlocal projectors
      !
      IF ( nkb > 0 ) CALL init_us_2( ngk(ik), igk_k(1,ik), xk(1,ik), vkb )

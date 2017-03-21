@@ -151,7 +151,7 @@ MODULE control_flags
     lmd     =.FALSE., &! if .TRUE. the calc. is a dynamics
     lwf     =.FALSE., &! if .TRUE. the calc. is with wannier functions
     !=================================================================
-    !exx_wf related 
+    !exx_wf related
     lwfnscf =.FALSE., &
     lwfpbe0nscf=.FALSE.,&
     !=================================================================
@@ -185,7 +185,7 @@ MODULE control_flags
   REAL(DP), PUBLIC  :: &
     tr2_init,         &! initial value of tr2 for adaptive thresholds
     tr2_multi          ! the dexx multiplier for adaptive thresholds
-                       ! tr2 = tr2_multi * dexx after each V_exx update 
+                       ! tr2 = tr2_multi * dexx after each V_exx update
   LOGICAL, PUBLIC :: scf_must_converge
   !
   ! ... pw diagonalization
@@ -193,7 +193,7 @@ MODULE control_flags
   REAL(DP), PUBLIC  :: &
     ethr               ! the convergence threshold for eigenvalues
   INTEGER, PUBLIC :: &
-    isolve,           &! Davidson or CG or ParO diagonalization
+    isolve,           &! Davidson or CG or RMM-DIIS diagonalization
     david,            &! max dimension of subspace in Davidson diagonalization
     max_cg_iter        ! maximum number of iterations in a CG call
   LOGICAL, PUBLIC :: &
@@ -230,11 +230,11 @@ MODULE control_flags
   ! ... miscellany
   !
   LOGICAL, PUBLIC :: &
-    use_para_diag = .FALSE.  ! if .TRUE. a fully distributed memory iteration 
+    use_para_diag = .FALSE.  ! if .TRUE. a fully distributed memory iteration
                              ! algorithm and parallel Householder algorithm are used
   !
   LOGICAL, PUBLIC :: &
-    remove_rigid_rot = .FALSE. ! if .TRUE. the total torque acting on the atoms 
+    remove_rigid_rot = .FALSE. ! if .TRUE. the total torque acting on the atoms
                                ! is removed
   LOGICAL, PUBLIC :: &
     do_makov_payne = .FALSE.   ! if .TRUE. makov-payne correction for isolated
@@ -255,8 +255,8 @@ MODULE control_flags
   !
   ! ... Augmetation charge and beta smoothing
   !
-  LOGICAL,          PUBLIC :: tq_smoothing=.FALSE. ! if true the Q are smoothed 
-  LOGICAL,          PUBLIC :: tbeta_smoothing=.FALSE. ! if true the betas are smoothed 
+  LOGICAL,          PUBLIC :: tq_smoothing=.FALSE. ! if true the Q are smoothed
+  LOGICAL,          PUBLIC :: tbeta_smoothing=.FALSE. ! if true the betas are smoothed
   !
   ! ... External Forces on Ions
   !
