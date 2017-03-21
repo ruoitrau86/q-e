@@ -60,7 +60,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
      !
   END IF
   !
-  eigen = eigen_
+  eigen_ = eigen
   !
   IF ( reorder ) THEN
      !
@@ -103,10 +103,10 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   ! ... Set initial : |phi_j> = |psi_j>
   !
-  CALL ZCOPY( kdimx * nbnd, psi(1,1), 1, phi(1,1), 1 )
+  CALL ZCOPY( kdmx * nbnd, psi(1,1), 1, phi(1,1), 1 )
   !
   IF ( uspp ) &
-  CALL ZCOPY( kdimx * nbnd, spsi(1,1), 1, sphi(1,1), 1 )
+  CALL ZCOPY( kdmx * nbnd, spsi(1,1), 1, sphi(1,1), 1 )
   !
   ! ... Blocking loop
   !
@@ -142,10 +142,10 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   ! ... Copy psi <- phi
   !
-  CALL ZCOPY( kdimx * nbnd, phi(1,1), 1, psi(1,1), 1 )
+  CALL ZCOPY( kdmx * nbnd, phi(1,1), 1, psi(1,1), 1 )
   !
   IF ( uspp ) &
-  CALL ZCOPY( kdimx * nbnd, sphi(1,1), 1, spsi(1,1), 1 )
+  CALL ZCOPY( kdmx * nbnd, sphi(1,1), 1, spsi(1,1), 1 )
   !
   ! ... Calculate energy eigenvalues
   !
@@ -310,8 +310,11 @@ CONTAINS
     !
     e(:) = 0._DP
     !
-    FORALL ( ibnd = ibnd_start:ibnd_end ) &
-    e(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       e(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
+       !
+    END DO
     !
     CALL mp_sum( e(ibnd_start:ibnd_end), intra_bgrp_comm )
     CALL mp_sum( e, inter_bgrp_comm )

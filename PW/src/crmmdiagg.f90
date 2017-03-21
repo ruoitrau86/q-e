@@ -258,7 +258,7 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       hc(idiis,idiis,ibnd) = CMPLX( DBLE( hc(idiis,idiis,ibnd), 0._DP, kind=DP )
+       hc(idiis,idiis,ibnd) = CMPLX( DBLE( hc(idiis,idiis,ibnd) ), 0._DP, kind=DP )
        hc(idiis,1:idiis,ibnd) = CONJG( hc(1:idiis,idiis,ibnd) )
        !
     END DO
@@ -294,7 +294,7 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       sc(idiis,idiis,ibnd) = CMPLX( DBLE( sc(idiis,idiis,ibnd), 0._DP, kind=DP )
+       sc(idiis,idiis,ibnd) = CMPLX( DBLE( sc(idiis,idiis,ibnd) ), 0._DP, kind=DP )
        sc(idiis,1:idiis,ibnd) = CONJG( sc(1:idiis,idiis,ibnd) )
        !
     END DO
@@ -625,10 +625,10 @@ CONTAINS
           IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
           !
           ene0 = php / psp
-          ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SERF ) / norm
+          ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SREF ) / norm
           !
           a = 2._DP * ( khp * psp - php * ksp ) / psp / psp
-          b = ( ene1 - ene0 - coef1 * SREF ) / SREF / SREF
+          b = ( ene1 - ene0 - a * SREF ) / SREF / SREF
           IF( ABS( b ) < eps16 ) CALL errore( ' crmmdiagg ', ' b == 0 ', 1 )
           !
           step  = -0.5_DP * a / b
@@ -665,15 +665,15 @@ CONTAINS
        z2 = CMPLX( coef(2,ibnd), 0._DP, kind=DP )
        !
        CALL ZSCAL( kdim, z1, psi (1,ibnd), 1 )
-       CALL ZAXPY( kdim, z2, kpsi(1,ibnd), 1, psi(1), 1 )
+       CALL ZAXPY( kdim, z2, kpsi(1,ibnd), 1, psi(1,ibnd), 1 )
        !
        CALL ZSCAL( kdim, z1, hpsi (1,ibnd), 1 )
-       CALL ZAXPY( kdim, z2, hkpsi(1,ibnd), 1, hpsi(1), 1 )
+       CALL ZAXPY( kdim, z2, hkpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
        !
        IF ( uspp ) THEN
           !
           CALL ZSCAL( kdim, z1, spsi (1,ibnd), 1 )
-          CALL ZAXPY( kdim, z2, skpsi(1,ibnd), 1, hpsi(1), 1 )
+          CALL ZAXPY( kdim, z2, skpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
           !
        END IF
        !
@@ -693,6 +693,8 @@ CONTAINS
     !
     IMPLICIT NONE
     !
+    LOGICAL, INTENT(IN) :: first
+    !
     INTEGER :: ibnd
     !
     COMPLEX(DP), EXTERNAL :: ZDOTC
@@ -709,20 +711,29 @@ CONTAINS
        !
        ! ... Matrix elements
        !
-       FORALL ( ibnd = ibnd_start:ibnd_end ) &
-       hw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
+       DO ibnd = ibnd_start, ibnd_end
+          !
+          hw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
+          !
+       END DO
        !
        CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
        !
        IF ( uspp ) THEN
           !
-          FORALL ( ibnd = ibnd_start:ibnd_end ) &
-          sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 ) )
+          DO ibnd = ibnd_start, ibnd_end
+             !
+             sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 ) )
+             !
+          END DO
           !
        ELSE
           !
-          FORALL ( ibnd = ibnd_start:ibnd_end ) &
-          sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 ) )
+          DO ibnd = ibnd_start, ibnd_end
+             !
+             sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 ) )
+             !
+          END DO
           !
        END IF
        !

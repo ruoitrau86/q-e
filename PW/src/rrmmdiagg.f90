@@ -457,7 +457,7 @@ CONTAINS
        !
     END DO
     !
-    CALL DGEMV( 'N', ndim, ndim, 1._D, x1, ndim, h3(:,imin), 1, 0._DP, vr, 1 )
+    CALL DGEMV( 'N', ndim, ndim, 1._DP, x1, ndim, h3(:,imin), 1, 0._DP, vr, 1 )
     !
 10  DEALLOCATE( h1 )
     DEALLOCATE( h2 )
@@ -607,9 +607,9 @@ CONTAINS
        !
        IF ( uspp ) THEN
           !
-          psp = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, spsi (1,ibnd), 1 ) )
-          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, spsi (1,ibnd), 1 ) )
-          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, skpsi(1,ibnd), 1 ) )
+          psp = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, spsi (1,ibnd), 1 )
+          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, spsi (1,ibnd), 1 )
+          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, skpsi(1,ibnd), 1 )
           !
           IF ( gstart == 2 ) THEN
              !
@@ -621,9 +621,9 @@ CONTAINS
           !
        ELSE
           !
-          psp = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, psi (1,ibnd), 1 ) )
-          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, psi (1,ibnd), 1 ) )
-          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, kpsi(1,ibnd), 1 ) )
+          psp = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, psi (1,ibnd), 1 )
+          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, psi (1,ibnd), 1 )
+          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
           !
           IF ( gstart == 2 ) THEN
              !
@@ -667,10 +667,10 @@ CONTAINS
           IF( norm <= eps16 ) CALL errore( ' rrmmdiagg ', ' norm <= 0 ', 1 )
           !
           ene0 = php / psp
-          ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SERF ) / norm
+          ene1 = ( php + 2._DP * khp * SREF + khk * SREF * SREF ) / norm
           !
           a = 2._DP * ( khp * psp - php * ksp ) / psp / psp
-          b = ( ene1 - ene0 - coef1 * SREF ) / SREF / SREF
+          b = ( ene1 - ene0 - a * SREF ) / SREF / SREF
           IF( ABS( b ) < eps16 ) CALL errore( ' rrmmdiagg ', ' b == 0 ', 1 )
           !
           step  = -0.5_DP * a / b
@@ -707,15 +707,15 @@ CONTAINS
        c2 = coef(2,ibnd)
        !
        CALL DSCAL( 2 * npw, c1, psi (1,ibnd), 1 )
-       CALL DAXPY( 2 * npw, c2, kpsi(1,ibnd), 1, psi(1), 1 )
+       CALL DAXPY( 2 * npw, c2, kpsi(1,ibnd), 1, psi(1,ibnd), 1 )
        !
        CALL DSCAL( 2 * npw, c1, hpsi (1,ibnd), 1 )
-       CALL DAXPY( 2 * npw, c2, hkpsi(1,ibnd), 1, hpsi(1), 1 )
+       CALL DAXPY( 2 * npw, c2, hkpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
        !
        IF ( uspp ) THEN
           !
           CALL DSCAL( 2 * npw, c1, spsi (1,ibnd), 1 )
-          CALL DAXPY( 2 * npw, c2, skpsi(1,ibnd), 1, hpsi(1), 1 )
+          CALL DAXPY( 2 * npw, c2, skpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
           !
        END IF
        !
@@ -744,6 +744,8 @@ CONTAINS
   SUBROUTINE eigenvalues( first )
     !
     IMPLICIT NONE
+    !
+    LOGICAL, INTENT(IN) :: first
     !
     INTEGER :: ibnd
     !
@@ -775,10 +777,10 @@ CONTAINS
        !
        DO ibnd = ibnd_start, ibnd_end
           !
-          hw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
+          hw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
           !
           IF ( gstart == 2 ) &
-          hw(ibnd) = hw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( hphi(1,ibnd) )
+          hw(ibnd) = hw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( hpsi(1,ibnd) )
           !
        END DO
        !
@@ -788,10 +790,10 @@ CONTAINS
           !
           DO ibnd = ibnd_start, ibnd_end
              !
-             sw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, spsi(1,ibnd), 1 ) )
+             sw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
              !
              IF ( gstart == 2 ) &
-             sw(ibnd) = sw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( sphi(1,ibnd) )
+             sw(ibnd) = sw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( spsi(1,ibnd) )
              !
           END DO
           !
@@ -799,10 +801,10 @@ CONTAINS
           !
           DO ibnd = ibnd_start, ibnd_end
              !
-             sw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, psi(1,ibnd), 1 ) )
+             sw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, psi(1,ibnd), 1 )
              !
              IF ( gstart == 2 ) &
-             sw(ibnd) = sw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( phi(1,ibnd) )
+             sw(ibnd) = sw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( psi(1,ibnd) )
              !
           END DO
           !

@@ -46,7 +46,7 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, spsi, e, &
   COMPLEX(DP), ALLOCATABLE :: phi(:,:), sphi(:,:)
   INTEGER,     ALLOCATABLE :: owner_bgrp_id(:)
   !
-  eigen = eigen_
+  eigen_ = eigen
   !
   IF ( reorder ) THEN
      !

@@ -492,7 +492,7 @@ CONTAINS
              !
           END IF
           !
-          CALL crmmdiagg( npwx, npw, nbnd, npol, evc, sevc, et(i1,ik),
+          CALL crmmdiagg( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, notconv, rmm_iter )
           !
           avg_iter = avg_iter + rmm_iter
