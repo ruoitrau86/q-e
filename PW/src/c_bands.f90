@@ -193,7 +193,7 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
   LOGICAL :: lrot
   ! .TRUE. if the wfc have already be rotated
   !
-  COMPLEX (KIND=DP), ALLOCATABLE :: sevc(:,:)
+  COMPLEX (KIND=DP), POINTER :: sevc(:,:)
   ! overlap x wavefunctions, only for RMM-DIIS
   !
   ALLOCATE( h_diag( npwx, npol ), STAT=ierr )
@@ -299,7 +299,11 @@ CONTAINS
        !
        ! ... RMM-DIIS diagonalization
        !
-       ALLOCATE( sevc( npwx, nbnd ) )
+       IF ( okvan ) THEN
+          ALLOCATE( sevc( npwx, nbnd ) )
+       ELSE
+          sevc => evc
+       END IF
        !
        ntry = 0
        !
@@ -335,7 +339,11 @@ CONTAINS
        !
        avg_iter = avg_iter + 1.D0
        !
-       DEALLOCATE( sevc )
+       IF ( okvan ) THEN
+          DEALLOCATE( sevc )
+       ELSE
+          NULLIFY( sevc )
+       END IF
        !
     ELSE
        !
@@ -476,7 +484,11 @@ CONTAINS
        !
        ! ... RMM-DIIS diagonalization
        !
-       ALLOCATE( sevc( npwx*npol, nbnd ) )
+       IF ( okvan ) THEN
+          ALLOCATE( sevc( npwx, nbnd ) )
+       ELSE
+          sevc => evc
+       END IF
        !
        ntry = 0
        !
@@ -512,7 +524,11 @@ CONTAINS
        !
        avg_iter = avg_iter + 1.D0
        !
-       DEALLOCATE( sevc )
+       IF ( okvan ) THEN
+          DEALLOCATE( sevc )
+       ELSE
+          NULLIFY( sevc )
+       END IF
        !
     ELSE
        !
