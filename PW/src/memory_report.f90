@@ -34,7 +34,7 @@ SUBROUTINE memory_report()
   USE lsda_mod,  ONLY : nspin
   USE noncollin_module, ONLY : npol
   USE control_flags, ONLY: isolve, nmix, imix, gamma_only, lscf, io_level, &
-       lxdm, smallmem
+       lxdm, smallmem, rmm_ndim
   USE ions_base, ONLY : ntyp=>nsp
   USE mp_diag,   ONLY : np_ortho
   USE mp_bands,  ONLY : nproc_bgrp, nbgrp
@@ -132,8 +132,21 @@ SUBROUTINE memory_report()
   ram1 = complex_size/g_fact * ( 2*nbnd_l**2 + & ! hr, sr
                                  nkb*npol*nbnd ) ! <psi|beta>
   IF ( isolve == 0 ) THEN
+     ! Davidson
      ram1 = ram1 + complex_size * nbndx * npol * npwx_l              ! hpsi
      IF ( okvan ) ram1 = ram1 + complex_size * nbndx * npol * npwx_l ! spsi
+  ELSE IF ( isolve == 2 ) THEN
+     ! RMM-DIIS
+     nbnd_l = NINT( DBLE(nbnd) / nbgrp )
+     ram1 = ram1 + complex_size * nbnd_l * npol * npwx_l * rmm_ndim               ! phi
+     ram1 = ram1 + complex_size * nbnd_l * npol * npwx_l * rmm_ndim               ! hphi
+     IF ( okvan ) ram1 = ram1 + complex_size * nbnd_l * npol * npwx_l * rmm_ndim  ! sphi
+     ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! hpsi
+     ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! hpsi
+     IF ( okvan ) ram1 = ram1 + complex_size * nbnd * npol * npwx_l  ! spsi
+     ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! kpsi
+     ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! hkpsi
+     IF ( okvan ) ram1 = ram1 + complex_size * nbnd * npol * npwx_l  ! skpsi
   END IF
   !
   ! arrays allocated in approx_screening2 during charge mixing 

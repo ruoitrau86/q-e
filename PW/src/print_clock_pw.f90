@@ -97,8 +97,10 @@ SUBROUTINE print_clock_pw()
    !
    IF ( isolve == 0 ) THEN
       WRITE( stdout, '(/5x,"Called by *egterg:")' )
-   ELSE
+   ELSE IF ( isolve == 1 ) THEN
       WRITE( stdout, '(/5x,"Called by *cgdiagg:")' )
+   ELSE IF ( isolve == 2 ) THEN
+      WRITE( stdout, '(/5x,"Called by *rmmdiagg:")' )
    END IF
    !
    CALL print_clock( 'h_psi' )
