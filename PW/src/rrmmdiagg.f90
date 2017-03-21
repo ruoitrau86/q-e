@@ -229,26 +229,45 @@ CONTAINS
        DO kdiis = 1, idiis
           !
           er = php(ibnd,kdiis)
+          !
           CALL DCOPY( 2 * npw, hphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
-          CALL DAXPY( 2 * npw, -er, sphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+          !
+          IF ( uspp ) THEN
+             !
+             CALL DAXPY( 2 * npw, -er, sphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+             !
+          ELSE
+             !
+             CALL DAXPY( 2 * npw, -er, phi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+             !
+          END IF
           !
        END DO
        !
        er = php(ibnd,idiis)
+       !
        CALL DCOPY( 2 * npw, hphi(1,ibnd,idiis), 1, vec1(1), 1 )
-       CALL DAXPY( 2 * npw, -er, sphi(1,ibnd,idiis), 1, vec1(1), 1 )
+       !
+       IF ( uspp ) THEN
+          !
+          CALL DAXPY( 2 * npw, -er, sphi(1,ibnd,idiis), 1, vec1(1), 1 )
+          !
+       ELSE
+          !
+          CALL DAXPY( 2 * npw, -er, phi(1,ibnd,idiis), 1, vec1(1), 1 )
+          !
+       END IF
        !
        CALL DGEMV( 'T', 2 * npw, idiis, 2._DP, vec2(1,1), 2 * npwx, &
-                   vec1(1), 1, 0._DP, hr(1,idiis,ibnd), 1 )
+                   vec1(1), 1, 0._DP, tr(1,ibnd), 1 )
        !
-       IF ( gstart == 2 ) hr(1:idiis,idiis,ibnd) = &
-                          hr(1:idiis,idiis,ibnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
+       IF ( gstart == 2 ) &
+       tr(1:idiis,ibnd) = tr(1:idiis,ibnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
        !
     END DO
     !
-    tr(:,:) = hr(:,idiis,:)
     CALL mp_sum( tr, intra_bgrp_comm )
-    hr(:,idiis,:) = tr(:,:)
+    hr(1:idiis,idiis,:) = tr(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -277,16 +296,15 @@ CONTAINS
        END IF
        !
        CALL DGEMV( 'T', 2 * npw, idiis, 2._DP, vec2(1,1), 2 * npwx, &
-                   vec1(1), 1, 0._DP, sr(1,idiis,ibnd), 1 )
+                   vec1(1), 1, 0._DP, tr(1,ibnd), 1 )
        !
-       IF ( gstart == 2 ) sr(1:idiis,idiis,ibnd) = &
-                          sr(1:idiis,idiis,ibnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
+       IF ( gstart == 2 ) &
+       tr(1:idiis,ibnd) = tr(1:idiis,ibnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
        !
     END DO
     !
-    tr(:,:) = sr(:,idiis,:)
     CALL mp_sum( tr, intra_bgrp_comm )
-    sr(:,idiis,:) = tr(:,:)
+    sr(1:idiis,idiis,:) = tr(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -323,8 +341,19 @@ CONTAINS
              ! ... Residual vectors
              !
              er = php(ibnd,kdiis)
+             !
              CALL DCOPY( 2 * npw, hphi(1,ibnd,kdiis), 1, vec1(1), 1 )
-             CALL DAXPY( 2 * npw, -er, sphi(1,ibnd,kdiis), 1, vec1(1), 1 )
+             !
+             IF ( uspp ) THEN
+                !
+                CALL DAXPY( 2 * npw, -er, sphi(1,ibnd,kdiis), 1, vec1(1), 1 )
+                !
+             ELSE
+                !
+                CALL DAXPY( 2 * npw, -er, phi(1,ibnd,kdiis), 1, vec1(1), 1 )
+                !
+             END IF
+             !
              CALL DAXPY( 2 * npw, vr(kdiis), vec1(1), 1, kpsi(1,ibnd), 1 )
              !
           END DO
@@ -342,8 +371,18 @@ CONTAINS
           ! ... Residual vectors
           !
           er = hw(ibnd)
+          !
           CALL DCOPY( 2 * npw, hpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
-          CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+          !
+          IF ( uspp ) THEN
+             !
+             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             !
+          ELSE
+             !
+             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             !
+          END IF
           !
        END IF
        !

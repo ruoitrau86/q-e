@@ -238,23 +238,42 @@ CONTAINS
        DO kdiis = 1, idiis
           !
           ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
+          !
           CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
-          CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+          !
+          IF ( uspp ) THEN
+             !
+             CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+             !
+          ELSE
+             !
+             CALL ZAXPY( kdim, -ec, phi(1,ibnd,kdiis), 1, vec2(1,kdiis), 1 )
+             !
+          END IF
           !
        END DO
        !
        ec = CMPLX( php(ibnd,idiis), 0._DP, kind=DP )
+       !
        CALL ZCOPY( kdim, hphi(1,ibnd,idiis), 1, vec1(1), 1 )
-       CALL ZAXPY( kdim, -ec, sphi(1,ibnd,idiis), 1, vec1(1), 1 )
+       !
+       IF ( uspp ) THEN
+          !
+          CALL ZAXPY( kdim, -ec, sphi(1,ibnd,idiis), 1, vec1(1), 1 )
+          !
+       ELSE
+          !
+          CALL ZAXPY( kdim, -ec, phi(1,ibnd,idiis), 1, vec1(1), 1 )
+          !
+       END IF
        !
        CALL ZGEMV( 'C', kdim, idiis, ONE, vec2(1,1), kdmx, &
-                   vec1(1), 1, ZERO, hc(1,idiis,ibnd), 1 )
+                   vec1(1), 1, ZERO, tc(1,ibnd), 1 )
        !
     END DO
     !
-    tc(:,:) = hc(:,idiis,:)
     CALL mp_sum( tc, intra_bgrp_comm )
-    hc(:,idiis,:) = tc(:,:)
+    hc(1:idiis,idiis,:) = tc(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -284,13 +303,12 @@ CONTAINS
        END IF
        !
        CALL ZGEMV( 'C', kdim, idiis, ONE, vec2(1,1), kdmx, &
-                   vec1(1), 1, ZERO, sc(1,idiis,ibnd), 1 )
+                   vec1(1), 1, ZERO, tc(1,ibnd), 1 )
        !
     END DO
     !
-    tc(:,:) = sc(:,idiis,:)
     CALL mp_sum( tc, intra_bgrp_comm )
-    sc(:,idiis,:) = tc(:,:)
+    sc(1:idiis,idiis,:) = tc(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
@@ -328,8 +346,19 @@ CONTAINS
              ! ... Residual vectors
              !
              ec = CMPLX( php(ibnd,kdiis), 0._DP, kind=DP )
+             !
              CALL ZCOPY( kdim, hphi(1,ibnd,kdiis), 1, vec1(1), 1 )
-             CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, vec1(1), 1 )
+             !
+             IF ( uspp ) THEN
+                !
+                CALL ZAXPY( kdim, -ec, sphi(1,ibnd,kdiis), 1, vec1(1), 1 )
+                !
+             ELSE
+                !
+                CALL ZAXPY( kdim, -ec, phi(1,ibnd,kdiis), 1, vec1(1), 1 )
+                !
+             END IF
+             !
              CALL ZAXPY( kdim, vc(kdiis), vec1(1), 1, kpsi(1,ibnd), 1 )
              !
           END DO
@@ -347,8 +376,18 @@ CONTAINS
           ! ... Residual vectors
           !
           ec = CMPLX( hw(ibnd), 0._DP, kind=DP )
+          !
           CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
-          CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+          !
+          IF ( uspp ) THEN
+             !
+             CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             !
+          ELSE
+             !
+             CALL ZAXPY( kdim, -ec, psi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             !
+          END IF
           !
        END IF
        !
@@ -385,6 +424,7 @@ CONTAINS
     REAL(DP),    ALLOCATABLE :: e1(:)
     INTEGER                  :: nwork
     COMPLEX(DP), ALLOCATABLE :: work(:)
+    REAL(DP),    ALLOCATABLE :: rwork(:)
     !
     ndim  = idiis
     nwork = 3 * ndim
@@ -397,11 +437,12 @@ CONTAINS
     ALLOCATE( x1( ndim, ndim ) )
     ALLOCATE( e1( ndim ) )
     ALLOCATE( work( nwork ) )
+    ALLOCATE( rwork( 3 * ndim - 2 ) )
     !
     h1(1:ndim,1:ndim) = hc(1:ndim,1:ndim,ibnd)
     s1(1:ndim,1:ndim) = sc(1:ndim,1:ndim,ibnd)
     !
-    CALL ZHEEV( 'V', 'U', ndim, s1, ndim, e1, work, nwork, info )
+    CALL ZHEEV( 'V', 'U', ndim, s1, ndim, e1, work, nwork, rwork, info )
     !
     IF( info /= 0 ) CALL errore( ' crmmdiagg ', ' cannot solve diis ', ABS(info) )
     !
@@ -438,7 +479,7 @@ CONTAINS
     !
     CALL ZGEMM( 'N', 'N', ndim, ndim, ndim, ONE, x1, ndim, h2, ndim, ZERO, h3, ndim )
     !
-    CALL ZHEEV( 'V', 'U', ndim, h3, ndim, e1, work, nwork, info )
+    CALL ZHEEV( 'V', 'U', ndim, h3, ndim, e1, work, nwork, rwork, info )
     !
     IF( info /= 0 ) CALL errore( ' crmmdiagg ', ' cannot solve diis ', ABS(info) )
     !
@@ -461,6 +502,7 @@ CONTAINS
     DEALLOCATE( x1 )
     DEALLOCATE( e1 )
     DEALLOCATE( work )
+    DEALLOCATE( rwork )
     !
     RETURN
     !
