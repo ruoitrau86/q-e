@@ -485,7 +485,7 @@ CONTAINS
        ! ... RMM-DIIS diagonalization
        !
        IF ( okvan ) THEN
-          ALLOCATE( sevc( npwx, nbnd ) )
+          ALLOCATE( sevc( npwx*npol, nbnd ) )
        ELSE
           sevc => evc
        END IF
