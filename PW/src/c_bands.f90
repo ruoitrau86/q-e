@@ -322,6 +322,10 @@ CONTAINS
           CALL rrmmdiagg( npwx, npw, nbnd, evc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, gstart, notconv, rmm_iter )
           !
+          ! ... not check convergence, if SCF
+          !
+          IF ( lscf ) notconv = 0
+          !
           avg_iter = avg_iter + rmm_iter
           !
           ntry = ntry + 1
@@ -506,6 +510,10 @@ CONTAINS
           !
           CALL crmmdiagg( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, notconv, rmm_iter )
+          !
+          ! ... not check convergence, if SCF
+          !
+          IF ( lscf ) notconv = 0
           !
           avg_iter = avg_iter + rmm_iter
           !

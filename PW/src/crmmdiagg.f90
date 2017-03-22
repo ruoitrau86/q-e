@@ -129,7 +129,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   IF ( uspp ) sphi = ZERO
   !
   hpsi  = ZERO
-  spsi  = ZERO
+  IF ( uspp ) spsi = ZERO
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
@@ -330,8 +330,7 @@ CONTAINS
           !
           psi (:,ibnd) = ZERO
           hpsi(:,ibnd) = ZERO
-          IF ( uspp ) &
-          spsi(:,ibnd) = ZERO
+          IF ( uspp ) spsi(:,ibnd) = ZERO
           kpsi(:,ibnd) = ZERO
           !
           DO kdiis = 1, idiis
@@ -412,19 +411,22 @@ CONTAINS
     COMPLEX(DP), INTENT(OUT) :: vc(idiis)
     !
     INTEGER                  :: info
-    INTEGER                  :: ndim, ndep
+    INTEGER                  :: ndim, kdim
     INTEGER                  :: i, imin
     REAL(DP)                 :: emin
+    REAL(DP)                 :: vnrm
     COMPLEX(DP), ALLOCATABLE :: h1(:,:)
     COMPLEX(DP), ALLOCATABLE :: h2(:,:)
     COMPLEX(DP), ALLOCATABLE :: h3(:,:)
     COMPLEX(DP), ALLOCATABLE :: s1(:,:)
-    COMPLEX(DP), ALLOCATABLE :: s2(:,:)
     COMPLEX(DP), ALLOCATABLE :: x1(:,:)
+    COMPLEX(DP), ALLOCATABLE :: u1(:)
     REAL(DP),    ALLOCATABLE :: e1(:)
     INTEGER                  :: nwork
     COMPLEX(DP), ALLOCATABLE :: work(:)
     REAL(DP),    ALLOCATABLE :: rwork(:)
+    !
+    COMPLEX(DP), EXTERNAL    :: ZDOTC
     !
     ndim  = idiis
     nwork = 3 * ndim
@@ -433,8 +435,8 @@ CONTAINS
     ALLOCATE( h2( ndim, ndim ) )
     ALLOCATE( h3( ndim, ndim ) )
     ALLOCATE( s1( ndim, ndim ) )
-    ALLOCATE( s2( ndim, ndim ) )
     ALLOCATE( x1( ndim, ndim ) )
+    ALLOCATE( u1( ndim ) )
     ALLOCATE( e1( ndim ) )
     ALLOCATE( work( nwork ) )
     ALLOCATE( rwork( 3 * ndim - 2 ) )
@@ -446,25 +448,23 @@ CONTAINS
     !
     IF( info /= 0 ) CALL errore( ' crmmdiagg ', ' cannot solve diis ', ABS(info) )
     !
-    ndep = 0
+    kdim = 0
+    !
+    x1 = ZERO
     !
     DO i = 1, ndim
        !
        IF ( e1(i) > eps14 ) THEN
           !
-          s2(:,i) = s1(:,i) / SQRT(e1(i))
+          kdim = kdim + 1
           !
-       ELSE
-          !
-          ndep = ndep + 1
-          !
-          s2(:,i) = ZERO
+          x1(:,kdim) = s1(:,i) / SQRT(e1(i))
           !
        END IF
        !
     END DO
     !
-    IF ( (ndim - ndep) <= 1 ) THEN
+    IF ( kdim <= 1 ) THEN
        !
        vc        = ZERO
        vc(idiis) = ONE
@@ -473,33 +473,45 @@ CONTAINS
        !
     END IF
     !
-    CALL ZGEMM( 'N', 'C', ndim, ndim, ndim, ONE, s2, ndim, s1, ndim, ZERO, x1, ndim )
+    h2 = ZERO
     !
-    CALL ZGEMM( 'N', 'N', ndim, ndim, ndim, ONE, h1, ndim, x1, ndim, ZERO, h2, ndim )
+    CALL ZGEMM( 'N', 'N', ndim, kdim, ndim, ONE, h1, ndim, x1, ndim, ZERO, h2, ndim )
     !
-    CALL ZGEMM( 'N', 'N', ndim, ndim, ndim, ONE, x1, ndim, h2, ndim, ZERO, h3, ndim )
+    h3 = ZERO
     !
-    CALL ZHEEV( 'V', 'U', ndim, h3, ndim, e1, work, nwork, rwork, info )
+    CALL ZGEMM( 'C', 'N', kdim, kdim, ndim, ONE, x1, ndim, h2, ndim, ZERO, h3, ndim )
+    !
+    e1 = 0._DP
+    !
+    CALL ZHEEV( 'V', 'U', kdim, h3, ndim, e1, work, nwork, rwork, info )
     !
     IF( info /= 0 ) CALL errore( ' crmmdiagg ', ' cannot solve diis ', ABS(info) )
     !
     imin = 1
     emin = e1(1)
     !
-    DO i = 2, ndim
+    DO i = 2, kdim
        !
        IF ( e1(i) < emin ) imin = i
        !
     END DO
     !
-    CALL ZGEMV( 'N', ndim, ndim, ONE, x1, ndim, h3(:,imin), 1, ZERO, vc, 1 )
+    CALL ZGEMV( 'N', ndim, kdim, ONE, x1, ndim, h3(:,imin), 1, ZERO, vc, 1 )
+    !
+    s1(1:ndim,1:ndim) = sc(1:ndim,1:ndim,ibnd)
+    !
+    CALL ZGEMV( 'N', ndim, ndim, ONE, s1, ndim, vc, 1, ZERO, u1, 1 )
+    !
+    vnrm = SQRT( DBLE( ZDOTC( ndim, vc, 1, u1, 1 ) ) )
+    !
+    vc = vc / vnrm
     !
 10  DEALLOCATE( h1 )
     DEALLOCATE( h2 )
     DEALLOCATE( h3 )
     DEALLOCATE( s1 )
-    DEALLOCATE( s2 )
     DEALLOCATE( x1 )
+    DEALLOCATE( u1 )
     DEALLOCATE( e1 )
     DEALLOCATE( work )
     DEALLOCATE( rwork )
@@ -715,7 +727,7 @@ CONTAINS
        IF ( uspp ) THEN
           !
           CALL ZSCAL( kdim, z1, spsi (1,ibnd), 1 )
-          CALL ZAXPY( kdim, z2, skpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+          CALL ZAXPY( kdim, z2, skpsi(1,ibnd), 1, spsi(1,ibnd), 1 )
           !
        END IF
        !

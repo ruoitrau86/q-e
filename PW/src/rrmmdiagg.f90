@@ -116,7 +116,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   IF ( uspp ) sphi = ZERO
   !
   hpsi  = ZERO
-  spsi  = ZERO
+  IF ( uspp ) spsi = ZERO
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
@@ -325,8 +325,7 @@ CONTAINS
           !
           psi (:,ibnd) = ZERO
           hpsi(:,ibnd) = ZERO
-          IF ( uspp ) &
-          spsi(:,ibnd) = ZERO
+          IF ( uspp ) spsi(:,ibnd) = ZERO
           kpsi(:,ibnd) = ZERO
           !
           DO kdiis = 1, idiis
@@ -418,18 +417,21 @@ CONTAINS
     REAL(DP), INTENT(OUT) :: vr(idiis)
     !
     INTEGER               :: info
-    INTEGER               :: ndim, ndep
+    INTEGER               :: ndim, kdim
     INTEGER               :: i, imin
     REAL(DP)              :: emin
+    REAL(DP)              :: vnrm
     REAL(DP), ALLOCATABLE :: h1(:,:)
     REAL(DP), ALLOCATABLE :: h2(:,:)
     REAL(DP), ALLOCATABLE :: h3(:,:)
     REAL(DP), ALLOCATABLE :: s1(:,:)
-    REAL(DP), ALLOCATABLE :: s2(:,:)
     REAL(DP), ALLOCATABLE :: x1(:,:)
+    REAL(DP), ALLOCATABLE :: u1(:)
     REAL(DP), ALLOCATABLE :: e1(:)
     INTEGER               :: nwork
     REAL(DP), ALLOCATABLE :: work(:)
+    !
+    REAL(DP), EXTERNAL    :: DDOT
     !
     ndim  = idiis
     nwork = 3 * ndim
@@ -438,8 +440,8 @@ CONTAINS
     ALLOCATE( h2( ndim, ndim ) )
     ALLOCATE( h3( ndim, ndim ) )
     ALLOCATE( s1( ndim, ndim ) )
-    ALLOCATE( s2( ndim, ndim ) )
     ALLOCATE( x1( ndim, ndim ) )
+    ALLOCATE( u1( ndim ) )
     ALLOCATE( e1( ndim ) )
     ALLOCATE( work( nwork ) )
     !
@@ -450,25 +452,23 @@ CONTAINS
     !
     IF( info /= 0 ) CALL errore( ' rrmmdiagg ', ' cannot solve diis ', ABS(info) )
     !
-    ndep = 0
+    kdim = 0
+    !
+    x1 = 0._DP
     !
     DO i = 1, ndim
        !
        IF ( e1(i) > eps14 ) THEN
           !
-          s2(:,i) = s1(:,i) / SQRT(e1(i))
+          kdim = kdim + 1
           !
-       ELSE
-          !
-          ndep = ndep + 1
-          !
-          s2(:,i) = 0._DP
+          x1(:,kdim) = s1(:,i) / SQRT(e1(i))
           !
        END IF
        !
     END DO
     !
-    IF ( (ndim - ndep) <= 1 ) THEN
+    IF ( kdim <= 1 ) THEN
        !
        vr        = 0._DP
        vr(idiis) = 1._DP
@@ -477,33 +477,45 @@ CONTAINS
        !
     END IF
     !
-    CALL DGEMM( 'N', 'T', ndim, ndim, ndim, 1._DP, s2, ndim, s1, ndim, 0._DP, x1, ndim )
+    h2 = 0._DP
     !
-    CALL DGEMM( 'N', 'N', ndim, ndim, ndim, 1._DP, h1, ndim, x1, ndim, 0._DP, h2, ndim )
+    CALL DGEMM( 'N', 'N', ndim, kdim, ndim, 1._DP, h1, ndim, x1, ndim, 0._DP, h2, ndim )
     !
-    CALL DGEMM( 'N', 'N', ndim, ndim, ndim, 1._DP, x1, ndim, h2, ndim, 0._DP, h3, ndim )
+    h3 = 0._DP
     !
-    CALL DSYEV( 'V', 'U', ndim, h3, ndim, e1, work, nwork, info )
+    CALL DGEMM( 'T', 'N', kdim, kdim, ndim, 1._DP, x1, ndim, h2, ndim, 0._DP, h3, ndim )
+    !
+    e1 = 0._DP
+    !
+    CALL DSYEV( 'V', 'U', kdim, h3, ndim, e1, work, nwork, info )
     !
     IF( info /= 0 ) CALL errore( ' rrmmdiagg ', ' cannot solve diis ', ABS(info) )
     !
     imin = 1
     emin = e1(1)
     !
-    DO i = 2, ndim
+    DO i = 2, kdim
        !
        IF ( e1(i) < emin ) imin = i
        !
     END DO
     !
-    CALL DGEMV( 'N', ndim, ndim, 1._DP, x1, ndim, h3(:,imin), 1, 0._DP, vr, 1 )
+    CALL DGEMV( 'N', ndim, kdim, 1._DP, x1, ndim, h3(:,imin), 1, 0._DP, vr, 1 )
+    !
+    s1(1:ndim,1:ndim) = sr(1:ndim,1:ndim,ibnd)
+    !
+    CALL DGEMV( 'N', ndim, ndim, 1._DP, s1, ndim, vr, 1, 0._DP, u1, 1 )
+    !
+    vnrm = SQRT( DDOT( ndim, vr, 1, u1, 1 ) )
+    !
+    vr = vr / vnrm
     !
 10  DEALLOCATE( h1 )
     DEALLOCATE( h2 )
     DEALLOCATE( h3 )
     DEALLOCATE( s1 )
-    DEALLOCATE( s2 )
     DEALLOCATE( x1 )
+    DEALLOCATE( u1 )
     DEALLOCATE( e1 )
     DEALLOCATE( work )
     !
@@ -754,7 +766,7 @@ CONTAINS
        IF ( uspp ) THEN
           !
           CALL DSCAL( 2 * npw, c1, spsi (1,ibnd), 1 )
-          CALL DAXPY( 2 * npw, c2, skpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+          CALL DAXPY( 2 * npw, c2, skpsi(1,ibnd), 1, spsi(1,ibnd), 1 )
           !
        END IF
        !
