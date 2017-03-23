@@ -44,8 +44,10 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   !
   INTEGER                  :: ierr
   INTEGER                  :: idiis
+  INTEGER                  :: motconv
   INTEGER                  :: ibnd_start, ibnd_end, ibnd_size
   INTEGER,     ALLOCATABLE :: ibnd_index(:)
+  INTEGER,     ALLOCATABLE :: jbnd_index(:)
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
   COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), kpsi(:,:), hkpsi(:,:), skpsi(:,:)
@@ -113,6 +115,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   !
   ALLOCATE( conv( nbnd ) )
   ALLOCATE( ibnd_index( nbnd ) )
+  ALLOCATE( jbnd_index( ibnd_start:ibnd_end ) )
   !
   phi  = ZERO
   hphi = ZERO
@@ -137,9 +140,11 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   !
   conv = .FALSE.
   ibnd_index = 0
+  jbnd_index = 0
   !
   rmm_iter = 0
   notconv  = nbnd
+  motconv  = ibnd_size
   !
   ! ... Set Im[ psi(G=0) ] - needed for numerical stability
   !
@@ -206,6 +211,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   DEALLOCATE( sw )
   DEALLOCATE( conv )
   DEALLOCATE( ibnd_index )
+  DEALLOCATE( jbnd_index )
   !
   CALL stop_clock( 'rrmmdiagg' )
   !
@@ -955,6 +961,24 @@ CONTAINS
           notconv = notconv + 1
           !
           ibnd_index(ibnd) = notconv
+          !
+       END IF
+       !
+    END DO
+    !
+    motconv = 0
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) THEN
+          !
+          jbnd_index(ibnd) = 0
+          !
+       ELSE
+          !
+          motconv = motconv + 1
+          !
+          jbnd_index(ibnd) = motconv
           !
        END IF
        !
