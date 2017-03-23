@@ -248,6 +248,8 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       IF ( conv(ibnd) ) CYCLE
+       !
        CALL ZCOPY( kdm, psi (1,ibnd), 1, phi (1,ibnd,idiis), 1 )
        CALL ZCOPY( kdm, hpsi(1,ibnd), 1, hphi(1,ibnd,idiis), 1 )
        IF ( uspp ) &
@@ -261,6 +263,8 @@ CONTAINS
     ! ... <R_i|R_j>
     !
     DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
        !
        ! ... Residual vectors : |R> = (H - e S) |psi>
        !
@@ -302,18 +306,22 @@ CONTAINS
     END DO
     !
     CALL mp_sum( tc, intra_bgrp_comm )
-    hc(1:idiis,idiis,:) = tc(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       hc(idiis,idiis,ibnd) = CMPLX( DBLE( hc(idiis,idiis,ibnd) ), 0._DP, kind=DP )
-       hc(idiis,1:idiis,ibnd) = CONJG( hc(1:idiis,idiis,ibnd) )
+       IF ( conv(ibnd) ) CYCLE
+       !
+       hc(1:idiis,idiis,ibnd) = tc(1:idiis,ibnd)
+       hc(idiis,1:idiis,ibnd) = CONJG( tc(1:idiis,ibnd) )
+       hc(idiis,idiis,ibnd)   = CMPLX( DBLE( tc(idiis,ibnd) ), 0._DP, kind=DP )
        !
     END DO
     !
     ! ... <phi_i| S |phi_j>
     !
     DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
        !
        DO kdiis = 1, idiis
           !
@@ -337,18 +345,22 @@ CONTAINS
     END DO
     !
     CALL mp_sum( tc, intra_bgrp_comm )
-    sc(1:idiis,idiis,:) = tc(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       sc(idiis,idiis,ibnd) = CMPLX( DBLE( sc(idiis,idiis,ibnd) ), 0._DP, kind=DP )
-       sc(idiis,1:idiis,ibnd) = CONJG( sc(1:idiis,idiis,ibnd) )
+       IF ( conv(ibnd) ) CYCLE
+       !
+       sc(1:idiis,idiis,ibnd) = tc(1:idiis,ibnd)
+       sc(idiis,1:idiis,ibnd) = CONJG( tc(1:idiis,ibnd) )
+       sc(idiis,idiis,ibnd)   = CMPLX( DBLE( tc(idiis,ibnd) ), 0._DP, kind=DP )
        !
     END DO
     !
     ! ... Update current wave functions and residual vectors
     !
     DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
        !
        IF ( idiis > 1 ) THEN
           !

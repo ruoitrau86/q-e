@@ -239,6 +239,8 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       IF ( conv(ibnd) ) CYCLE
+       !
        CALL DCOPY( 2 * npw, psi (1,ibnd), 1, phi (1,ibnd,idiis), 1 )
        CALL DCOPY( 2 * npw, hpsi(1,ibnd), 1, hphi(1,ibnd,idiis), 1 )
        IF ( uspp ) &
@@ -252,6 +254,8 @@ CONTAINS
     ! ... <R_i|R_j>
     !
     DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
        !
        ! ... Residual vectors : |R> = (H - e S) |psi>
        !
@@ -296,17 +300,21 @@ CONTAINS
     END DO
     !
     CALL mp_sum( tr, intra_bgrp_comm )
-    hr(1:idiis,idiis,:) = tr(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       hr(idiis,1:idiis,ibnd) = hr(1:idiis,idiis,ibnd)
+       IF ( conv(ibnd) ) CYCLE
+       !
+       hr(1:idiis,idiis,ibnd) = tr(1:idiis,ibnd)
+       hr(idiis,1:idiis,ibnd) = tr(1:idiis,ibnd)
        !
     END DO
     !
     ! ... <phi_i| S |phi_j>
     !
     DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
        !
        DO kdiis = 1, idiis
           !
@@ -333,17 +341,21 @@ CONTAINS
     END DO
     !
     CALL mp_sum( tr, intra_bgrp_comm )
-    sr(1:idiis,idiis,:) = tr(1:idiis,:)
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       sr(idiis,1:idiis,ibnd) = sr(1:idiis,idiis,ibnd)
+       IF ( conv(ibnd) ) CYCLE
+       !
+       sr(1:idiis,idiis,ibnd) = tr(1:idiis,ibnd)
+       sr(idiis,1:idiis,ibnd) = tr(1:idiis,ibnd)
        !
     END DO
     !
     ! ... Update current wave functions and residual vectors
     !
     DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
        !
        IF ( idiis > 1 ) THEN
           !
@@ -414,18 +426,18 @@ CONTAINS
           !
        END IF
        !
+       ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
+       IF ( gstart == 2 ) THEN
+          !
+          psi (1,ibnd) = CMPLX( DBLE( psi (1,ibnd) ), 0._DP, kind=DP )
+          hpsi(1,ibnd) = CMPLX( DBLE( hpsi(1,ibnd) ), 0._DP, kind=DP )
+          IF ( uspp ) &
+          spsi(1,ibnd) = CMPLX( DBLE( spsi(1,ibnd) ), 0._DP, kind=DP )
+          kpsi(1,ibnd) = CMPLX( DBLE( kpsi(1,ibnd) ), 0._DP, kind=DP )
+          !
+       END IF
+       !
     END DO
-    !
-    ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
-    IF ( gstart == 2 ) THEN
-       !
-       psi (1,1:nbnd) = CMPLX( DBLE( psi (1,1:nbnd) ), 0._DP, kind=DP )
-       hpsi(1,1:nbnd) = CMPLX( DBLE( hpsi(1,1:nbnd) ), 0._DP, kind=DP )
-       IF ( uspp ) &
-       spsi(1,1:nbnd) = CMPLX( DBLE( spsi(1,1:nbnd) ), 0._DP, kind=DP )
-       kpsi(1,1:nbnd) = CMPLX( DBLE( kpsi(1,1:nbnd) ), 0._DP, kind=DP )
-       !
-    END IF
     !
     DEALLOCATE( vec1 )
     DEALLOCATE( vec2 )
