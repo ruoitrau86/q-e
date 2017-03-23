@@ -144,7 +144,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   ! ... RMM-DIIS's loop
   !
   rmm_iter = 0
-  notconv  = 0
+  notconv  = nbnd
   !
   DO idiis = 1, ndiis
      !
@@ -165,6 +165,25 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
      IF ( notconv == 0 ) EXIT
      !
   END DO
+  !
+  ! ... Merge wave functions
+  !
+  IF ( ibnd_start > 1 ) THEN
+     !
+     psi(:,1:(ibnd_start-1)) = ZERO
+     IF ( uspp ) spsi(:,1:(ibnd_start-1)) = ZERO
+     !
+  END IF
+  !
+  IF ( ibnd_end < nbnd ) THEN
+     !
+     psi(:,(ibnd_end+1):nbnd) = ZERO
+     IF ( uspp ) spsi(:,(ibnd_end+1):nbnd) = ZERO
+     !
+  END IF
+  !
+  CALL mp_sum( psi, inter_bgrp_comm )
+  IF ( uspp ) CALL mp_sum( spsi, inter_bgrp_comm )
   !
   DEALLOCATE( phi )
   DEALLOCATE( hphi )
