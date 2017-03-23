@@ -46,6 +46,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   INTEGER                  :: idiis
   INTEGER                  :: kdim, kdmx
   INTEGER                  :: ibnd_start, ibnd_end, ibnd_size
+  INTEGER,     ALLOCATABLE :: ibnd_index(:)
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
   COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), kpsi(:,:), hkpsi(:,:), skpsi(:,:)
@@ -122,7 +123,9 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   ALLOCATE( ew( nbnd ) )
   ALLOCATE( hw( nbnd ) )
   ALLOCATE( sw( nbnd ) )
+  !
   ALLOCATE( conv( nbnd ) )
+  ALLOCATE( ibnd_index( nbnd ) )
   !
   phi  = ZERO
   hphi = ZERO
@@ -140,20 +143,22 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   php = 0._DP
   psp = 0._DP
   !
-  e    = 0._DP
-  ew   = 0._DP
-  hw   = 0._DP
-  sw   = 0._DP
+  e  = 0._DP
+  ew = 0._DP
+  hw = 0._DP
+  sw = 0._DP
+  !
   conv = .FALSE.
+  ibnd_index = 0
+  !
+  rmm_iter = 0
+  notconv  = nbnd
   !
   ! ... Initial eigenvalues
   !
   CALL eigenvalues( .TRUE. )
   !
   ! ... RMM-DIIS's loop
-  !
-  rmm_iter = 0
-  notconv  = nbnd
   !
   DO idiis = 1, ndiis
      !
@@ -209,6 +214,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   DEALLOCATE( hw )
   DEALLOCATE( sw )
   DEALLOCATE( conv )
+  DEALLOCATE( ibnd_index )
   !
   CALL stop_clock( 'crmmdiagg' )
   !
@@ -238,15 +244,19 @@ CONTAINS
     IF ( idiis > 1 ) ALLOCATE( vc( idiis ) )
     ALLOCATE( tc( idiis, ibnd_start:ibnd_end ) )
     !
-    ! ... Save current wave functions and eigenvalues
+    ! ... Save current wave functions and matrix elements
     !
-    CALL ZCOPY( kdmx * ibnd_size, psi (1,ibnd_start), 1, phi (1,ibnd_start,idiis), 1 )
-    CALL ZCOPY( kdmx * ibnd_size, hpsi(1,ibnd_start), 1, hphi(1,ibnd_start,idiis), 1 )
-    IF ( uspp ) &
-    CALL ZCOPY( kdmx * ibnd_size, spsi(1,ibnd_start), 1, sphi(1,ibnd_start,idiis), 1 )
-    !
-    CALL DCOPY( ibnd_size, hw(ibnd_start), 1, php(ibnd_start,idiis), 1 )
-    CALL DCOPY( ibnd_size, sw(ibnd_start), 1, psp(ibnd_start,idiis), 1 )
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       CALL ZCOPY( kdm, psi (1,ibnd), 1, phi (1,ibnd,idiis), 1 )
+       CALL ZCOPY( kdm, hpsi(1,ibnd), 1, hphi(1,ibnd,idiis), 1 )
+       IF ( uspp ) &
+       CALL ZCOPY( kdm, spsi(1,ibnd), 1, sphi(1,ibnd,idiis), 1 )
+       !
+       php(ibnd,idiis) = hw(ibnd)
+       psp(ibnd,idiis) = sw(ibnd)
+       !
+    END DO
     !
     ! ... <R_i|R_j>
     !
@@ -826,19 +836,49 @@ CONTAINS
     !
     ! ... Check convergence
     !
-    WHERE( btype(1:nbnd) == 1 )
+    IF ( first ) THEN
        !
-       conv(1:nbnd) = ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
+       conv(1:nbnd) = .FALSE.
        !
-    ELSEWHERE
+    ELSE
        !
-       conv(1:nbnd) = ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
+       WHERE( btype(1:nbnd) == 1 )
+          !
+          conv(1:nbnd) = conv(1:nbnd) &
+          .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
+          !
+       ELSEWHERE
+          !
+          conv(1:nbnd) = conv(1:nbnd) &
+          .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
+          !
+       END WHERE
        !
-    END WHERE
+    END IF
     !
     CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm )
     !
-    notconv = COUNT( .NOT. conv(1:nbnd) )
+    ! ... Count not converged bands
+    !
+    notconv = 0
+    !
+    DO ibnd = 1, nbnd
+       !
+       IF ( conv(ibnd) ) THEN
+          !
+          ibnd_index(ibnd) = 0
+          !
+       ELSE
+          !
+          notconv = notconv + 1
+          !
+          ibnd_index(ibnd) = notconv
+          !
+       END IF
+       !
+    END DO
+    !
+    ! ... Save current eigenvalues
     !
     e(1:nbnd) = ew(1:nbnd)
     !
