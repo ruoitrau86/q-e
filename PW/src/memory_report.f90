@@ -142,7 +142,6 @@ SUBROUTINE memory_report()
      ram1 = ram1 + complex_size * nbnd_l * npol * npwx_l * rmm_ndim               ! hphi
      IF ( okvan ) ram1 = ram1 + complex_size * nbnd_l * npol * npwx_l * rmm_ndim  ! sphi
      ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! hpsi
-     ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! hpsi
      IF ( okvan ) ram1 = ram1 + complex_size * nbnd * npol * npwx_l  ! spsi
      ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! kpsi
      ram1 = ram1 + complex_size * nbnd * npol * npwx_l               ! hkpsi
