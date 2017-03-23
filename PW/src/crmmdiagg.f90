@@ -236,7 +236,7 @@ CONTAINS
     !
     INTEGER, INTENT(IN) :: idiis
     !
-    INTEGER                  :: ibnd
+    INTEGER                  :: ibnd, jbnd
     INTEGER                  :: kdiis
     REAL(DP)                 :: norm
     COMPLEX(DP)              :: ec
@@ -247,8 +247,8 @@ CONTAINS
     !
     ALLOCATE( vec1( kdmx ) )
     ALLOCATE( vec2( kdmx, idiis ) )
-    IF ( idiis > 1 ) ALLOCATE( vc( idiis ) )
-    ALLOCATE( tc( idiis, ibnd_start:ibnd_end ) )
+    IF ( idiis > 1 )   ALLOCATE( vc( idiis ) )
+    IF ( motconv > 0 ) ALLOCATE( tc( idiis, motconv ) )
     !
     ! ... Save current wave functions and matrix elements
     !
@@ -271,6 +271,8 @@ CONTAINS
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
        !
        ! ... Residual vectors : |R> = (H - e S) |psi>
        !
@@ -307,19 +309,25 @@ CONTAINS
        END IF
        !
        CALL ZGEMV( 'C', kdim, idiis, ONE, vec2(1,1), kdmx, &
-                   vec1(1), 1, ZERO, tc(1,ibnd), 1 )
+                   vec1(1), 1, ZERO, tc(1,jbnd), 1 )
        !
     END DO
     !
-    CALL mp_sum( tc, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( tc, intra_bgrp_comm )
+       !
+    END IF
     !
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       hc(1:idiis,idiis,ibnd) = tc(1:idiis,ibnd)
-       hc(idiis,1:idiis,ibnd) = CONJG( tc(1:idiis,ibnd) )
-       hc(idiis,idiis,ibnd)   = CMPLX( DBLE( tc(idiis,ibnd) ), 0._DP, kind=DP )
+       jbnd = jbnd_index(ibnd)
+       !
+       hc(1:idiis,idiis,ibnd) = tc(1:idiis,jbnd)
+       hc(idiis,1:idiis,ibnd) = CONJG( tc(1:idiis,jbnd) )
+       hc(idiis,idiis,ibnd)   = CMPLX( DBLE( tc(idiis,jbnd) ), 0._DP, kind=DP )
        !
     END DO
     !
@@ -328,6 +336,8 @@ CONTAINS
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
        !
        DO kdiis = 1, idiis
           !
@@ -346,19 +356,25 @@ CONTAINS
        END IF
        !
        CALL ZGEMV( 'C', kdim, idiis, ONE, vec2(1,1), kdmx, &
-                   vec1(1), 1, ZERO, tc(1,ibnd), 1 )
+                   vec1(1), 1, ZERO, tc(1,jbnd), 1 )
        !
     END DO
     !
-    CALL mp_sum( tc, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( tc, intra_bgrp_comm )
+       !
+    END IF
     !
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       sc(1:idiis,idiis,ibnd) = tc(1:idiis,ibnd)
-       sc(idiis,1:idiis,ibnd) = CONJG( tc(1:idiis,ibnd) )
-       sc(idiis,idiis,ibnd)   = CMPLX( DBLE( tc(idiis,ibnd) ), 0._DP, kind=DP )
+       jbnd = jbnd_index(ibnd)
+       !
+       sc(1:idiis,idiis,ibnd) = tc(1:idiis,jbnd)
+       sc(idiis,1:idiis,ibnd) = CONJG( tc(1:idiis,jbnd) )
+       sc(idiis,idiis,ibnd)   = CMPLX( DBLE( tc(idiis,jbnd) ), 0._DP, kind=DP )
        !
     END DO
     !
@@ -367,6 +383,8 @@ CONTAINS
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = ibnd_index(ibnd)
        !
        IF ( idiis > 1 ) THEN
           !
@@ -378,7 +396,7 @@ CONTAINS
           psi (:,ibnd) = ZERO
           hpsi(:,ibnd) = ZERO
           IF ( uspp ) spsi(:,ibnd) = ZERO
-          kpsi(:,ibnd) = ZERO
+          kpsi(:,jbnd) = ZERO
           !
           DO kdiis = 1, idiis
              !
@@ -405,7 +423,7 @@ CONTAINS
                 !
              END IF
              !
-             CALL ZAXPY( kdim, vc(kdiis), vec1(1), 1, kpsi(1,ibnd), 1 )
+             CALL ZAXPY( kdim, vc(kdiis), vec1(1), 1, kpsi(1,jbnd), 1 )
              !
           END DO
           !
@@ -423,15 +441,15 @@ CONTAINS
           !
           ec = CMPLX( hw(ibnd), 0._DP, kind=DP )
           !
-          CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+          CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
           !
           IF ( uspp ) THEN
              !
-             CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
              !
           ELSE
              !
-             CALL ZAXPY( kdim, -ec, psi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             CALL ZAXPY( kdim, -ec, psi(1,ibnd), 1, kpsi(1,jbnd), 1 )
              !
           END IF
           !
@@ -441,8 +459,8 @@ CONTAINS
     !
     DEALLOCATE( vec1 )
     DEALLOCATE( vec2 )
-    IF ( idiis > 1 ) DEALLOCATE( vc )
-    DEALLOCATE( tc )
+    IF ( idiis > 1 )   DEALLOCATE( vc )
+    IF ( motconv > 0 ) DEALLOCATE( tc )
     !
     RETURN
     !

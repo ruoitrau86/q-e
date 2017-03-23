@@ -227,7 +227,7 @@ CONTAINS
     !
     INTEGER, INTENT(IN) :: idiis
     !
-    INTEGER                  :: ibnd
+    INTEGER                  :: ibnd, jbnd
     INTEGER                  :: kdiis
     REAL(DP)                 :: norm
     REAL(DP)                 :: er
@@ -238,8 +238,8 @@ CONTAINS
     !
     ALLOCATE( vec1( npwx ) )
     ALLOCATE( vec2( npwx, idiis ) )
-    IF ( idiis > 1 ) ALLOCATE( vr( idiis ) )
-    ALLOCATE( tr( idiis, ibnd_start:ibnd_end ) )
+    IF ( idiis > 1 )   ALLOCATE( vr( idiis ) )
+    IF ( motconv > 0 ) ALLOCATE( tr( idiis, motconv ) )
     !
     ! ... Save current wave functions and matrix elements
     !
@@ -262,6 +262,8 @@ CONTAINS
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
        !
        ! ... Residual vectors : |R> = (H - e S) |psi>
        !
@@ -298,21 +300,27 @@ CONTAINS
        END IF
        !
        CALL DGEMV( 'T', 2 * npw, idiis, 2._DP, vec2(1,1), 2 * npwx, &
-                   vec1(1), 1, 0._DP, tr(1,ibnd), 1 )
+                   vec1(1), 1, 0._DP, tr(1,jbnd), 1 )
        !
        IF ( gstart == 2 ) &
-       tr(1:idiis,ibnd) = tr(1:idiis,ibnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
+       tr(1:idiis,jbnd) = tr(1:idiis,jbnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
        !
     END DO
     !
-    CALL mp_sum( tr, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( tr, intra_bgrp_comm )
+       !
+    END IF
     !
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       hr(1:idiis,idiis,ibnd) = tr(1:idiis,ibnd)
-       hr(idiis,1:idiis,ibnd) = tr(1:idiis,ibnd)
+       jbnd = jbnd_index(ibnd)
+       !
+       hr(1:idiis,idiis,ibnd) = tr(1:idiis,jbnd)
+       hr(idiis,1:idiis,ibnd) = tr(1:idiis,jbnd)
        !
     END DO
     !
@@ -321,6 +329,8 @@ CONTAINS
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
        !
        DO kdiis = 1, idiis
           !
@@ -339,21 +349,27 @@ CONTAINS
        END IF
        !
        CALL DGEMV( 'T', 2 * npw, idiis, 2._DP, vec2(1,1), 2 * npwx, &
-                   vec1(1), 1, 0._DP, tr(1,ibnd), 1 )
+                   vec1(1), 1, 0._DP, tr(1,jbnd), 1 )
        !
        IF ( gstart == 2 ) &
-       tr(1:idiis,ibnd) = tr(1:idiis,ibnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
+       tr(1:idiis,jbnd) = tr(1:idiis,jbnd) - DBLE( vec2(1,1:idiis) ) * DBLE( vec1(1) )
        !
     END DO
     !
-    CALL mp_sum( tr, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( tr, intra_bgrp_comm )
+       !
+    END IF
     !
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       sr(1:idiis,idiis,ibnd) = tr(1:idiis,ibnd)
-       sr(idiis,1:idiis,ibnd) = tr(1:idiis,ibnd)
+       jbnd = jbnd_index(ibnd)
+       !
+       sr(1:idiis,idiis,ibnd) = tr(1:idiis,jbnd)
+       sr(idiis,1:idiis,ibnd) = tr(1:idiis,jbnd)
        !
     END DO
     !
@@ -362,6 +378,8 @@ CONTAINS
     DO ibnd = ibnd_start, ibnd_end
        !
        IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = ibnd_index(ibnd)
        !
        IF ( idiis > 1 ) THEN
           !
@@ -373,7 +391,7 @@ CONTAINS
           psi (:,ibnd) = ZERO
           hpsi(:,ibnd) = ZERO
           IF ( uspp ) spsi(:,ibnd) = ZERO
-          kpsi(:,ibnd) = ZERO
+          kpsi(:,jbnd) = ZERO
           !
           DO kdiis = 1, idiis
              !
@@ -400,7 +418,7 @@ CONTAINS
                 !
              END IF
              !
-             CALL DAXPY( 2 * npw, vr(kdiis), vec1(1), 1, kpsi(1,ibnd), 1 )
+             CALL DAXPY( 2 * npw, vr(kdiis), vec1(1), 1, kpsi(1,jbnd), 1 )
              !
           END DO
           !
@@ -418,15 +436,15 @@ CONTAINS
           !
           er = hw(ibnd)
           !
-          CALL DCOPY( 2 * npw, hpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+          CALL DCOPY( 2 * npw, hpsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
           !
           IF ( uspp ) THEN
              !
-             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
              !
           ELSE
              !
-             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
              !
           END IF
           !
@@ -439,7 +457,7 @@ CONTAINS
           hpsi(1,ibnd) = CMPLX( DBLE( hpsi(1,ibnd) ), 0._DP, kind=DP )
           IF ( uspp ) &
           spsi(1,ibnd) = CMPLX( DBLE( spsi(1,ibnd) ), 0._DP, kind=DP )
-          kpsi(1,ibnd) = CMPLX( DBLE( kpsi(1,ibnd) ), 0._DP, kind=DP )
+          kpsi(1,jbnd) = CMPLX( DBLE( kpsi(1,jbnd) ), 0._DP, kind=DP )
           !
        END IF
        !
@@ -447,8 +465,8 @@ CONTAINS
     !
     DEALLOCATE( vec1 )
     DEALLOCATE( vec2 )
-    IF ( idiis > 1 ) DEALLOCATE( vr )
-    DEALLOCATE( tr )
+    IF ( idiis > 1 )   DEALLOCATE( vr )
+    IF ( motconv > 0 ) DEALLOCATE( tr )
     !
     RETURN
     !
