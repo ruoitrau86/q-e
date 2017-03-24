@@ -363,7 +363,7 @@ MODULE read_namelists_module
        diago_thr_init = 0.0_DP
        diago_cg_maxiter = 20
        diago_david_ndim = 4
-       diago_rmm_ndim = 8
+       diago_rmm_ndim = 6
        diago_gs_nblock = 16
        diago_full_acc = .FALSE.
        !

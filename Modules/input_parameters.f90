@@ -828,7 +828,7 @@ MODULE input_parameters
           ! dimension of the subspace used in Davidson diagonalization
           ! used only in PWscf
 
-        INTEGER :: diago_rmm_ndim = 8
+        INTEGER :: diago_rmm_ndim = 6
           ! dimension of the subspace used in RMM-DIIS diagonalization
           ! used only in PWscf
 
