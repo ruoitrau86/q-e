@@ -42,7 +42,7 @@ SUBROUTINE rotate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hevc
   !
   INTEGER :: kdim, kdmx
   COMPLEX(DP), ALLOCATABLE :: hc(:,:), sc(:,:), vc(:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: tpsi(:,:), hpsi(:,:), spsi(:,:)
   REAL(DP),    ALLOCATABLE :: en(:)
   !
   IF ( npol == 1 ) THEN
@@ -57,7 +57,8 @@ SUBROUTINE rotate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hevc
      !
   END IF
   !
-  ALLOCATE( hpsi(kdmx, nstart ) )
+  ALLOCATE( tpsi( kdmx, nstart ) )
+  ALLOCATE( hpsi( kdmx, nstart ) )
   IF ( overlap ) ALLOCATE( spsi(kdmx, nstart ) )
   ALLOCATE( hc( nstart, nstart) )    
   ALLOCATE( sc( nstart, nstart) )    
@@ -95,8 +96,10 @@ SUBROUTINE rotate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hevc
   e(:) = en(1:nbnd)
   !
   ! ...  update the basis set
-  !  
-  CALL ZGEMM( 'N', 'N', kdim, nbnd, nstart, ( 1.D0, 0.D0 ), psi, kdmx, vc, nstart, ( 0.D0, 0.D0 ), evc, kdmx )
+  !
+  tpsi = psi
+  !
+  CALL ZGEMM( 'N', 'N', kdim, nbnd, nstart, ( 1.D0, 0.D0 ), tpsi, kdmx, vc, nstart, ( 0.D0, 0.D0 ), evc,  kdmx )
   !
   CALL ZGEMM( 'N', 'N', kdim, nbnd, nstart, ( 1.D0, 0.D0 ), hpsi, kdmx, vc, nstart, ( 0.D0, 0.D0 ), hevc, kdmx )
   !
@@ -109,6 +112,7 @@ SUBROUTINE rotate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hevc
   DEALLOCATE( hc )
   IF ( overlap ) DEALLOCATE( spsi )
   DEALLOCATE( hpsi )
+  DEALLOCATE( tpsi )
   !
   RETURN
   !
@@ -154,7 +158,7 @@ SUBROUTINE protate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hev
   !
   INTEGER :: kdim, kdmx
   COMPLEX(DP), ALLOCATABLE :: hc(:,:), sc(:,:), vc(:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: tpsi(:,:), hpsi(:,:), spsi(:,:)
   REAL(DP),    ALLOCATABLE :: en(:)
   !
   TYPE(la_descriptor) :: desc
@@ -183,8 +187,9 @@ SUBROUTINE protate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hev
      !
   END IF
   !
-  ALLOCATE( hpsi(kdmx, nstart ) )
-  IF ( overlap ) ALLOCATE( spsi(kdmx, nstart ) )
+  ALLOCATE( tpsi( kdmx, nstart ) )
+  ALLOCATE( hpsi( kdmx, nstart ) )
+  IF ( overlap ) ALLOCATE( spsi( kdmx, nstart ) )
   ALLOCATE( hc( nx, nx) )    
   ALLOCATE( sc( nx, nx) )    
   ALLOCATE( vc( nx, nx) )    
@@ -217,7 +222,9 @@ SUBROUTINE protate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hev
   e(:) = en(1:nbnd)
   !
   ! ...  update the basis set
-  !  
+  !
+  tpsi = psi
+  !
   CALL refresh_evc()
   !
   DEALLOCATE( en )
@@ -226,6 +233,7 @@ SUBROUTINE protate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hev
   DEALLOCATE( hc )
   IF ( overlap ) DEALLOCATE( spsi )
   DEALLOCATE( hpsi )
+  DEALLOCATE( tpsi )
   !
   DEALLOCATE( desc_ip )
   DEALLOCATE( rank_ip )
@@ -348,7 +356,7 @@ CONTAINS
                  CALL mp_bcast( vc(:,1:nc), root, ortho_parent_comm )
                  !
                  CALL ZGEMM( 'N', 'N', kdim, nc, nr, ( 1.D0, 0.D0 ),  &
-                             psi(1,ir), kdmx, vc, nx, beta, evc(1,ic), kdmx )
+                             tpsi(1,ir), kdmx, vc, nx, beta, evc(1,ic),  kdmx )
                  !
                  CALL ZGEMM( 'N', 'N', kdim, nc, nr, ( 1.D0, 0.D0 ),  &
                              hpsi(1,ir), kdmx, vc, nx, beta, hevc(1,ic), kdmx )
@@ -363,7 +371,7 @@ CONTAINS
                  CALL mp_bcast( vtmp(:,1:nc), root, ortho_parent_comm )
                  !
                  CALL ZGEMM( 'N', 'N', kdim, nc, nr, ( 1.D0, 0.D0 ),  &
-                             psi(1,ir), kdmx, vtmp, nx, beta, evc(1,ic), kdmx )
+                             tpsi(1,ir), kdmx, vtmp, nx, beta, evc(1,ic),  kdmx )
                  !
                  CALL ZGEMM( 'N', 'N', kdim, nc, nr, ( 1.D0, 0.D0 ),  &
                              hpsi(1,ir), kdmx, vtmp, nx, beta, hevc(1,ic), kdmx )

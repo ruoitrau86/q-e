@@ -44,9 +44,10 @@ SUBROUTINE rotate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, evc
   ! ... auxiliary variables:
   !
   REAL(DP),    ALLOCATABLE :: hr(:,:), sr(:,:), vr(:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: tpsi(:,:), hpsi(:,:), spsi(:,:)
   REAL(DP),    ALLOCATABLE :: en(:)
   !
+  ALLOCATE( tpsi( npwx, nstart ) )
   ALLOCATE( hpsi( npwx, nstart ) )
   IF ( overlap ) ALLOCATE( spsi( npwx, nstart ) )
   ALLOCATE( hr( nstart, nstart ) )    
@@ -103,7 +104,9 @@ SUBROUTINE rotate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, evc
   !
   ! ... update the basis set
   !
-  CALL DGEMM( 'N', 'N', 2 * npw, nbnd, nstart, 1.D0, psi, 2 * npwx,  vr, nstart, 0.D0, evc, 2 * npwx )
+  tpsi = psi
+  !
+  CALL DGEMM( 'N', 'N', 2 * npw, nbnd, nstart, 1.D0, tpsi, 2 * npwx,  vr, nstart, 0.D0, evc,  2 * npwx )
   !
   CALL DGEMM( 'N', 'N', 2 * npw, nbnd, nstart, 1.D0, hpsi, 2 * npwx,  vr, nstart, 0.D0, hevc, 2 * npwx )
   !
@@ -116,6 +119,7 @@ SUBROUTINE rotate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, evc
   DEALLOCATE( hr )
   IF ( overlap ) DEALLOCATE( spsi )
   DEALLOCATE( hpsi )
+  DEALLOCATE( tpsi )
   !
   RETURN
   !
@@ -164,7 +168,7 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
   ! ... auxiliary variables:
   !
   REAL(DP),    ALLOCATABLE :: hr(:,:), sr(:,:), vr(:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), spsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: tpsi(:,:), hpsi(:,:), spsi(:,:)
   REAL(DP),    ALLOCATABLE :: en(:)
   !
   TYPE(la_descriptor) :: desc
@@ -183,6 +187,7 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
   !
   CALL desc_init( nstart, desc, desc_ip )
   !
+  ALLOCATE( tpsi( npwx, nstart ) )
   ALLOCATE( hpsi( npwx, nstart ) )
   IF ( overlap ) ALLOCATE( spsi( npwx, nstart ) )
   ALLOCATE( hr( nx, nx ) )    
@@ -222,6 +227,8 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
   !
   ! ... update the basis set
   !
+  tpsi = psi
+  !
   CALL refresh_evc( )
   !
   DEALLOCATE( desc_ip )
@@ -232,6 +239,7 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
   DEALLOCATE( hr )
   IF ( overlap ) DEALLOCATE( spsi )
   DEALLOCATE( hpsi )
+  DEALLOCATE( tpsi )
   !
   RETURN
   !
@@ -354,7 +362,7 @@ CONTAINS
                  CALL mp_bcast( vr(:,1:nc), root, ortho_parent_comm )
                  !
                  CALL DGEMM( 'N', 'N', 2*npw, nc, nr, 1.D0,  &
-                             psi(1,ir), 2*npwx, vr, nx, beta, evc(1,ic), 2*npwx )
+                             tpsi(1,ir), 2*npwx, vr, nx, beta, evc(1,ic),  2*npwx )
                  !
                  CALL DGEMM( 'N', 'N', 2*npw, nc, nr, 1.D0,  &
                              hpsi(1,ir), 2*npwx, vr, nx, beta, hevc(1,ic), 2*npwx )
@@ -370,7 +378,7 @@ CONTAINS
                  CALL mp_bcast( vtmp(:,1:nc), root, ortho_parent_comm )
                  !
                  CALL DGEMM( 'N', 'N', 2*npw, nc, nr, 1.D0,  &
-                             psi(1,ir), 2*npwx, vtmp, nx, beta, evc(1,ic), 2*npwx )
+                             tpsi(1,ir), 2*npwx, vtmp, nx, beta, evc(1,ic),  2*npwx )
                  !
                  CALL DGEMM( 'N', 'N', 2*npw, nc, nr, 1.D0,  &
                              hpsi(1,ir), 2*npwx, vtmp, nx, beta, hevc(1,ic), 2*npwx )
