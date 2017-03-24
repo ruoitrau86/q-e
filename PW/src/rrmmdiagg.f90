@@ -119,9 +119,6 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
   hphi = ZERO
   IF ( uspp ) sphi = ZERO
   !
-  hpsi  = ZERO
-  IF ( uspp ) spsi = ZERO
-  !
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
@@ -147,7 +144,14 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
   !
   ! ... Set Im[ psi(G=0) ] - needed for numerical stability
   !
-  IF ( gstart == 2 ) psi(1,1:nbnd) = CMPLX( DBLE( psi(1,1:nbnd) ), 0._DP, kind=DP )
+  IF ( gstart == 2 ) THEN
+     !
+     psi (1,1:nbnd) = CMPLX( DBLE( psi (1,1:nbnd) ), 0._DP, kind=DP )
+     hpsi(1,1:nbnd) = CMPLX( DBLE( hpsi(1,1:nbnd) ), 0._DP, kind=DP )
+     IF ( uspp ) &
+     spsi(1,1:nbnd) = CMPLX( DBLE( spsi(1,1:nbnd) ), 0._DP, kind=DP )
+     !
+  END IF
   !
   ! ... Initial eigenvalues
   !

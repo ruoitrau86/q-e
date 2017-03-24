@@ -132,9 +132,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   hphi = ZERO
   IF ( uspp ) sphi = ZERO
   !
-  hpsi  = ZERO
-  IF ( uspp ) spsi = ZERO
-  !
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
