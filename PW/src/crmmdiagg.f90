@@ -797,13 +797,22 @@ CONTAINS
           !
           a = 2._DP * ( khp * psp - php * ksp ) / psp / psp
           b = ( ene1 - ene0 - a * SREF ) / SREF / SREF
-          IF( ABS( b ) < eps16 ) CALL errore( ' crmmdiagg ', ' b == 0 ', 1 )
           !
-          step  = -0.5_DP * a / b
+          IF( ABS( b ) > eps16 ) THEN
+             step  = -0.5_DP * a / b
+          ELSE
+             IF ( a < 0._DP ) THEN
+                step = SMAX
+             ELSE
+                step = SMIN
+             END IF
+          END IF
+          !
           step  = MAX( SMIN, step )
           step  = MIN( SMAX, step )
+          !
           norm  = psp + 2._DP * ksp * step + ksk * step * step
-          IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
+          IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 2 )
           norm  = SQRT( norm )
           !
           coef(1,jbnd) = 1._DP / norm
