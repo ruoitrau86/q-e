@@ -21,7 +21,7 @@ SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   ! ... I/O variables
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
-  COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi (npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
   REAL(DP),    INTENT(OUT)   :: e(nbnd)

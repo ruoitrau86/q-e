@@ -28,7 +28,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   ! ... I/O variables
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
-  COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi (npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
   REAL(DP),    INTENT(INOUT) :: e(nbnd)
@@ -326,6 +326,8 @@ CONTAINS
     ! ... <psi_i| H |psi_i>
     !
     e(:) = 0._DP
+    !
+    CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
     !
     DO ibnd = ibnd_start, ibnd_end
        !

@@ -26,7 +26,7 @@ SUBROUTINE gram_schmidt_gamma( npwx, npw, nbnd, psi, hpsi, spsi, e, &
   ! ... I/O variables
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd
-  COMPLEX(DP), INTENT(INOUT) :: psi(npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi (npwx,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx,nbnd)
   REAL(DP),    INTENT(OUT)   :: e(nbnd)
@@ -399,6 +399,8 @@ CONTAINS
     ! ... <psi_i| H |psi_i>
     !
     e(:) = 0._DP
+    !
+    CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
     !
     DO ibnd = ibnd_start, ibnd_end
        !
