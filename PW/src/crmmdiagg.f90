@@ -236,7 +236,7 @@ CONTAINS
     !
     INTEGER, INTENT(IN) :: idiis
     !
-    INTEGER                  :: ibnd, jbnd
+    INTEGER                  :: ibnd, jbnd, kbnd
     INTEGER                  :: kdiis
     REAL(DP)                 :: norm
     COMPLEX(DP)              :: ec
@@ -384,7 +384,7 @@ CONTAINS
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       jbnd = ibnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
        !
        IF ( idiis > 1 ) THEN
           !
@@ -396,7 +396,7 @@ CONTAINS
           psi (:,ibnd) = ZERO
           hpsi(:,ibnd) = ZERO
           IF ( uspp ) spsi(:,ibnd) = ZERO
-          kpsi(:,jbnd) = ZERO
+          kpsi(:,kbnd) = ZERO
           !
           DO kdiis = 1, idiis
              !
@@ -423,7 +423,7 @@ CONTAINS
                 !
              END IF
              !
-             CALL ZAXPY( kdim, vc(kdiis), vec1(1), 1, kpsi(1,jbnd), 1 )
+             CALL ZAXPY( kdim, vc(kdiis), vec1(1), 1, kpsi(1,kbnd), 1 )
              !
           END DO
           !
@@ -441,15 +441,15 @@ CONTAINS
           !
           ec = CMPLX( hw(ibnd), 0._DP, kind=DP )
           !
-          CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
+          CALL ZCOPY( kdim, hpsi(1,ibnd), 1, kpsi(1,kbnd), 1 )
           !
           IF ( uspp ) THEN
              !
-             CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
+             CALL ZAXPY( kdim, -ec, spsi(1,ibnd), 1, kpsi(1,kbnd), 1 )
              !
           ELSE
              !
-             CALL ZAXPY( kdim, -ec, psi(1,ibnd), 1, kpsi(1,jbnd), 1 )
+             CALL ZAXPY( kdim, -ec, psi(1,ibnd), 1, kpsi(1,kbnd), 1 )
              !
           END IF
           !
@@ -590,7 +590,9 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER               :: ibnd, ig, ipol
+    INTEGER               :: ig, ipol
+    INTEGER               :: ibnd, jbnd, kbnd
+    LOGICAL               :: para_hpsi
     REAL(DP)              :: psir, psii, psi2
     REAL(DP)              :: kdiag, k1, k2
     REAL(DP)              :: x, x2, x3, x4
@@ -601,22 +603,33 @@ CONTAINS
     REAL(DP)              :: php, khp, khk
     REAL(DP)              :: psp, ksp, ksk
     REAL(DP), ALLOCATABLE :: hmat(:,:), smat(:,:)
+    REAL(DP), ALLOCATABLE :: heig(:), seig(:)
     REAL(DP)              :: c1, c2
     COMPLEX(DP)           :: z1, z2
     REAL(DP), ALLOCATABLE :: coef(:,:)
     !
     COMPLEX(DP), EXTERNAL :: ZDOTC
     !
-    ALLOCATE( ekin( ibnd_start:ibnd_end ) )
-    ALLOCATE( hmat( 3, ibnd_start:ibnd_end ) )
-    ALLOCATE( smat( 3, ibnd_start:ibnd_end ) )
-    ALLOCATE( coef( 2, ibnd_start:ibnd_end ) )
+    IF ( motconv > 0 ) THEN
+       !
+       ALLOCATE( ekin( motconv ) )
+       ALLOCATE( hmat( 3, motconv ) )
+       ALLOCATE( smat( 3, motconv ) )
+       ALLOCATE( heig( motconv ) )
+       ALLOCATE( seig( motconv ) )
+       ALLOCATE( coef( 2, motconv ) )
+       !
+    END IF
     !
     ! ... Kinetic energy
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       ekin(ibnd) = 0._DP
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       !
+       ekin(jbnd) = 0._DP
        !
        DO ipol = 1, npol
           !
@@ -625,7 +638,7 @@ CONTAINS
              psir = DBLE ( psi(ig+(ipol-1)*npwx,ibnd) )
              psii = AIMAG( psi(ig+(ipol-1)*npwx,ibnd) )
              psi2 = psir * psir + psii * psii
-             ekin(ibnd) = ekin(ibnd) + g2kin(ig) * psi2
+             ekin(jbnd) = ekin(jbnd) + g2kin(ig) * psi2
              !
           END DO
           !
@@ -633,7 +646,11 @@ CONTAINS
        !
     END DO
     !
-    CALL mp_sum( ekin, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( ekin, intra_bgrp_comm )
+       !
+    END IF
     !
     ! ... Preconditioning vectors : K (H - e S) |psi>
     !
@@ -641,20 +658,25 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
+       !
        DO ipol = 1, npol
           !
           DO ig = 1, npw
              !
-             x  = g2kin(ig) / ( 1.5_DP * ekin(ibnd) )
+             x  = g2kin(ig) / ( 1.5_DP * ekin(jbnd) )
              x2 = x * x
              x3 = x * x2
              x4 = x * x3
              !
              k1 = 27._DP + 18._DP * x + 12._DP * x2 + 8._DP * x3
              k2 = k1 + 16._DP * x4
-             kdiag = ( -4._DP / 3._DP / ekin(ibnd) ) * k1 / k2
+             kdiag = ( -4._DP / 3._DP / ekin(jbnd) ) * k1 / k2
              !
-             kpsi(ig+(ipol-1)*npwx,ibnd) = kdiag * kpsi(ig+(ipol-1)*npwx,ibnd)
+             kpsi(ig+(ipol-1)*npwx,kbnd) = kdiag * kpsi(ig+(ipol-1)*npwx,kbnd)
              !
           END DO
           !
@@ -664,66 +686,87 @@ CONTAINS
     !
     ! ... Share kpsi for all band-groups
     !
-    IF ( ( .NOT. use_bgrp_in_hpsi ) .OR. exx_is_active() ) THEN
+    IF ( use_bgrp_in_hpsi .AND. ( .NOT. exx_is_active() ) .AND. ( notconv > 1 ) ) THEN
+       !
+       para_hpsi = .TRUE.
+       !
+    ELSE
+       !
+       para_hpsi = .FALSE.
+       !
+    END IF
+    !
+    IF ( ( .NOT. para_hpsi ) .OR. ( notconv /= nbnd ) ) THEN
        !
        DO ibnd = 1, ( ibnd_start - 1)
           !
-          kpsi(:,ibnd) = ZERO
+          IF ( .NOT. conv(ibnd) ) &
+          kpsi(:,ibnd_index(ibnd)) = ZERO
           !
        END DO
        !
        DO ibnd = ( ibnd_end + 1 ), nbnd
           !
-          kpsi(:,ibnd) = ZERO
+          IF ( .NOT. conv(ibnd) ) &
+          kpsi(:,ibnd_index(ibnd)) = ZERO
           !
        END DO
        !
-       CALL mp_sum( kpsi, inter_bgrp_comm )
+       CALL mp_sum( kpsi(:,1:notconv), inter_bgrp_comm )
        !
     END IF
     !
     ! ... Operate the Hamiltonian : H K (H - eS) |psi>
     !
-    CALL h_psi( npwx, npw, nbnd, kpsi, hkpsi )
+    CALL h_psi( npwx, npw, notconv, kpsi, hkpsi )
     !
     ! ... Operate the Overlap : S K (H - eS) |psi>
     !
-    IF ( uspp ) CALL s_psi( npwx, npw, nbnd, kpsi, skpsi )
+    IF ( uspp ) CALL s_psi( npwx, npw, notconv, kpsi, skpsi )
     !
     ! ... Create 2 x 2 matrix
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
+       !
        php = DBLE( ZDOTC( kdim, psi (1,ibnd), 1, hpsi (1,ibnd), 1 ) )
-       khp = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, hpsi (1,ibnd), 1 ) )
-       khk = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, hkpsi(1,ibnd), 1 ) )
+       khp = DBLE( ZDOTC( kdim, kpsi(1,kbnd), 1, hpsi (1,ibnd), 1 ) )
+       khk = DBLE( ZDOTC( kdim, kpsi(1,kbnd), 1, hkpsi(1,kbnd), 1 ) )
        !
        IF ( uspp ) THEN
           !
           psp = DBLE( ZDOTC( kdim, psi (1,ibnd), 1, spsi (1,ibnd), 1 ) )
-          ksp = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, spsi (1,ibnd), 1 ) )
-          ksk = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, skpsi(1,ibnd), 1 ) )
+          ksp = DBLE( ZDOTC( kdim, kpsi(1,kbnd), 1, spsi (1,ibnd), 1 ) )
+          ksk = DBLE( ZDOTC( kdim, kpsi(1,kbnd), 1, skpsi(1,kbnd), 1 ) )
           !
        ELSE
           !
           psp = DBLE( ZDOTC( kdim, psi (1,ibnd), 1, psi (1,ibnd), 1 ) )
-          ksp = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, psi (1,ibnd), 1 ) )
-          ksk = DBLE( ZDOTC( kdim, kpsi(1,ibnd), 1, kpsi(1,ibnd), 1 ) )
+          ksp = DBLE( ZDOTC( kdim, kpsi(1,kbnd), 1, psi (1,ibnd), 1 ) )
+          ksk = DBLE( ZDOTC( kdim, kpsi(1,kbnd), 1, kpsi(1,kbnd), 1 ) )
           !
        END IF
        !
-       hmat(1,ibnd) = php
-       hmat(2,ibnd) = khp
-       hmat(3,ibnd) = khk
+       hmat(1,jbnd) = php
+       hmat(2,jbnd) = khp
+       hmat(3,jbnd) = khk
        !
-       smat(1,ibnd) = psp
-       smat(2,ibnd) = ksp
-       smat(3,ibnd) = ksk
+       smat(1,jbnd) = psp
+       smat(2,jbnd) = ksp
+       smat(3,jbnd) = ksk
        !
     END DO
     !
-    CALL mp_sum( hmat, intra_bgrp_comm )
-    CALL mp_sum( smat, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( hmat, intra_bgrp_comm )
+       CALL mp_sum( smat, intra_bgrp_comm )
+       !
+    END IF
     !
     ! ... Line searching for each band
     !
@@ -731,13 +774,17 @@ CONTAINS
        !
        DO ibnd = ibnd_start, ibnd_end
           !
-          php = hmat(1,ibnd)
-          khp = hmat(2,ibnd)
-          khk = hmat(3,ibnd)
+          IF ( conv(ibnd) ) CYCLE
           !
-          psp = smat(1,ibnd)
-          ksp = smat(2,ibnd)
-          ksk = smat(3,ibnd)
+          jbnd = jbnd_index(ibnd)
+          !
+          php = hmat(1,jbnd)
+          khp = hmat(2,jbnd)
+          khk = hmat(3,jbnd)
+          !
+          psp = smat(1,jbnd)
+          ksp = smat(2,jbnd)
+          ksk = smat(3,jbnd)
           IF( psp <= eps16 ) CALL errore( ' crmmdiagg ', ' psp <= 0 ', 1 )
           !
           norm = psp + 2._DP * ksp * SREF + ksk * SREF * SREF
@@ -757,51 +804,77 @@ CONTAINS
           IF( norm <= eps16 ) CALL errore( ' crmmdiagg ', ' norm <= 0 ', 1 )
           norm  = SQRT( norm )
           !
-          coef(1,ibnd) = 1._DP / norm
-          coef(2,ibnd) = step  / norm
+          coef(1,jbnd) = 1._DP / norm
+          coef(2,jbnd) = step  / norm
           !
           ! ... Update current matrix elements
           !
-          c1 = coef(1,ibnd)
-          c2 = coef(2,ibnd)
+          c1 = coef(1,jbnd)
+          c2 = coef(2,jbnd)
           !
-          hw(ibnd) = php * c1 * c1 + 2._DP * khp * c1 * c2 + khk * c2 * c2
-          sw(ibnd) = psp * c1 * c1 + 2._DP * ksp * c1 * c2 + ksk * c2 * c2
+          heig(jbnd) = php * c1 * c1 + 2._DP * khp * c1 * c2 + khk * c2 * c2
+          seig(jbnd) = psp * c1 * c1 + 2._DP * ksp * c1 * c2 + ksk * c2 * c2
           !
        END DO
        !
     END IF
     !
-    CALL mp_bcast( coef, root_bgrp, intra_bgrp_comm )
-    CALL mp_bcast( hw(ibnd_start:ibnd_end), root_bgrp, intra_bgrp_comm )
-    CALL mp_bcast( sw(ibnd_start:ibnd_end), root_bgrp, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_bcast( coef, root_bgrp, intra_bgrp_comm )
+       CALL mp_bcast( heig, root_bgrp, intra_bgrp_comm )
+       CALL mp_bcast( seig, root_bgrp, intra_bgrp_comm )
+       !
+    END IF
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       !
+       hw(ibnd) = heig(jbnd)
+       sw(ibnd) = seig(jbnd)
+       !
+    END DO
     !
     ! ... Update current wave functions
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       z1 = CMPLX( coef(1,ibnd), 0._DP, kind=DP )
-       z2 = CMPLX( coef(2,ibnd), 0._DP, kind=DP )
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
+       !
+       z1 = CMPLX( coef(1,jbnd), 0._DP, kind=DP )
+       z2 = CMPLX( coef(2,jbnd), 0._DP, kind=DP )
        !
        CALL ZSCAL( kdim, z1, psi (1,ibnd), 1 )
-       CALL ZAXPY( kdim, z2, kpsi(1,ibnd), 1, psi(1,ibnd), 1 )
+       CALL ZAXPY( kdim, z2, kpsi(1,kbnd), 1, psi(1,ibnd), 1 )
        !
        CALL ZSCAL( kdim, z1, hpsi (1,ibnd), 1 )
-       CALL ZAXPY( kdim, z2, hkpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+       CALL ZAXPY( kdim, z2, hkpsi(1,kbnd), 1, hpsi(1,ibnd), 1 )
        !
        IF ( uspp ) THEN
           !
           CALL ZSCAL( kdim, z1, spsi (1,ibnd), 1 )
-          CALL ZAXPY( kdim, z2, skpsi(1,ibnd), 1, spsi(1,ibnd), 1 )
+          CALL ZAXPY( kdim, z2, skpsi(1,kbnd), 1, spsi(1,ibnd), 1 )
           !
        END IF
        !
     END DO
     !
-    DEALLOCATE( ekin )
-    DEALLOCATE( hmat )
-    DEALLOCATE( smat )
-    DEALLOCATE( coef )
+    IF ( motconv > 0 ) THEN
+       !
+       DEALLOCATE( ekin )
+       DEALLOCATE( hmat )
+       DEALLOCATE( smat )
+       DEALLOCATE( heig )
+       DEALLOCATE( seig )
+       DEALLOCATE( coef )
+       !
+    END IF
     !
     RETURN
     !

@@ -227,7 +227,7 @@ CONTAINS
     !
     INTEGER, INTENT(IN) :: idiis
     !
-    INTEGER                  :: ibnd, jbnd
+    INTEGER                  :: ibnd, jbnd, kbnd
     INTEGER                  :: kdiis
     REAL(DP)                 :: norm
     REAL(DP)                 :: er
@@ -379,7 +379,7 @@ CONTAINS
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       jbnd = ibnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
        !
        IF ( idiis > 1 ) THEN
           !
@@ -391,7 +391,7 @@ CONTAINS
           psi (:,ibnd) = ZERO
           hpsi(:,ibnd) = ZERO
           IF ( uspp ) spsi(:,ibnd) = ZERO
-          kpsi(:,jbnd) = ZERO
+          kpsi(:,kbnd) = ZERO
           !
           DO kdiis = 1, idiis
              !
@@ -418,7 +418,7 @@ CONTAINS
                 !
              END IF
              !
-             CALL DAXPY( 2 * npw, vr(kdiis), vec1(1), 1, kpsi(1,jbnd), 1 )
+             CALL DAXPY( 2 * npw, vr(kdiis), vec1(1), 1, kpsi(1,kbnd), 1 )
              !
           END DO
           !
@@ -436,15 +436,15 @@ CONTAINS
           !
           er = hw(ibnd)
           !
-          CALL DCOPY( 2 * npw, hpsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
+          CALL DCOPY( 2 * npw, hpsi(1,ibnd), 1, kpsi(1,kbnd), 1 )
           !
           IF ( uspp ) THEN
              !
-             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
+             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,kbnd), 1 )
              !
           ELSE
              !
-             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,jbnd), 1 )
+             CALL DAXPY( 2 * npw, -er, spsi(1,ibnd), 1, kpsi(1,kbnd), 1 )
              !
           END IF
           !
@@ -457,7 +457,7 @@ CONTAINS
           hpsi(1,ibnd) = CMPLX( DBLE( hpsi(1,ibnd) ), 0._DP, kind=DP )
           IF ( uspp ) &
           spsi(1,ibnd) = CMPLX( DBLE( spsi(1,ibnd) ), 0._DP, kind=DP )
-          kpsi(1,jbnd) = CMPLX( DBLE( kpsi(1,jbnd) ), 0._DP, kind=DP )
+          kpsi(1,kbnd) = CMPLX( DBLE( kpsi(1,kbnd) ), 0._DP, kind=DP )
           !
        END IF
        !
@@ -593,7 +593,9 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER               :: ibnd, ig
+    INTEGER               :: ig
+    INTEGER               :: ibnd, jbnd, kbnd
+    LOGICAL               :: para_hpsi
     REAL(DP)              :: psir, psii, psi2
     REAL(DP)              :: kdiag, k1, k2
     REAL(DP)              :: x, x2, x3, x4
@@ -604,28 +606,39 @@ CONTAINS
     REAL(DP)              :: php, khp, khk
     REAL(DP)              :: psp, ksp, ksk
     REAL(DP), ALLOCATABLE :: hmat(:,:), smat(:,:)
+    REAL(DP), ALLOCATABLE :: heig(:), seig(:)
     REAL(DP)              :: c1, c2
     REAL(DP), ALLOCATABLE :: coef(:,:)
     !
     REAL(DP), EXTERNAL    :: DDOT
     !
-    ALLOCATE( ekin( ibnd_start:ibnd_end ) )
-    ALLOCATE( hmat( 3, ibnd_start:ibnd_end ) )
-    ALLOCATE( smat( 3, ibnd_start:ibnd_end ) )
-    ALLOCATE( coef( 2, ibnd_start:ibnd_end ) )
+    IF ( motconv > 0 ) THEN
+       !
+       ALLOCATE( ekin( motconv ) )
+       ALLOCATE( hmat( 3, motconv ) )
+       ALLOCATE( smat( 3, motconv ) )
+       ALLOCATE( heig( motconv ) )
+       ALLOCATE( seig( motconv ) )
+       ALLOCATE( coef( 2, motconv ) )
+       !
+    END IF
     !
     ! ... Kinetic energy
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       ekin(ibnd) = 0._DP
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       !
+       ekin(jbnd) = 0._DP
        !
        DO ig = gstart, npw
           !
           psir = DBLE ( psi(ig,ibnd) )
           psii = AIMAG( psi(ig,ibnd) )
           psi2 = psir * psir + psii * psii
-          ekin(ibnd) = ekin(ibnd) + 2._DP * g2kin(ig) * psi2
+          ekin(jbnd) = ekin(jbnd) + 2._DP * g2kin(ig) * psi2
           !
        END DO
        !
@@ -633,13 +646,17 @@ CONTAINS
           !
           psir = DBLE ( psi(ig,ibnd) )
           psi2 = psir * psir
-          ekin(ibnd) = ekin(ibnd) + g2kin(1) * psi2
+          ekin(jbnd) = ekin(jbnd) + g2kin(1) * psi2
           !
        END IF
        !
     END DO
     !
-    CALL mp_sum( ekin, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( ekin, intra_bgrp_comm )
+       !
+    END IF
     !
     ! ... Preconditioning vectors : K (H - e S) |psi>
     !
@@ -647,18 +664,23 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
+       !
        DO ig = 1, npw
           !
-          x  = g2kin(ig) / ( 1.5_DP * ekin(ibnd) )
+          x  = g2kin(ig) / ( 1.5_DP * ekin(jbnd) )
           x2 = x * x
           x3 = x * x2
           x4 = x * x3
           !
           k1 = 27._DP + 18._DP * x + 12._DP * x2 + 8._DP * x3
           k2 = k1 + 16._DP * x4
-          kdiag = ( -4._DP / 3._DP / ekin(ibnd) ) * k1 / k2
+          kdiag = ( -4._DP / 3._DP / ekin(jbnd) ) * k1 / k2
           !
-          kpsi(ig,ibnd) = kdiag * kpsi(ig,ibnd)
+          kpsi(ig,kbnd) = kdiag * kpsi(ig,kbnd)
           !
        END DO
        !
@@ -666,35 +688,47 @@ CONTAINS
     !
     ! ... Share kpsi for all band-groups
     !
-    IF ( ( .NOT. use_bgrp_in_hpsi ) .OR. exx_is_active() ) THEN
+    IF ( use_bgrp_in_hpsi .AND. ( .NOT. exx_is_active() ) .AND. ( notconv > 1 ) ) THEN
+       !
+       para_hpsi = .TRUE.
+       !
+    ELSE
+       !
+       para_hpsi = .FALSE.
+       !
+    END IF
+    !
+    IF ( ( .NOT. para_hpsi ) .OR. ( notconv /= nbnd ) ) THEN
        !
        DO ibnd = 1, ( ibnd_start - 1)
           !
-          kpsi(:,ibnd) = ZERO
+          IF ( .NOT. conv(ibnd) ) &
+          kpsi(:,ibnd_index(ibnd)) = ZERO
           !
        END DO
        !
        DO ibnd = ( ibnd_end + 1 ), nbnd
           !
-          kpsi(:,ibnd) = ZERO
+          IF ( .NOT. conv(ibnd) ) &
+          kpsi(:,ibnd_index(ibnd)) = ZERO
           !
        END DO
        !
-       CALL mp_sum( kpsi, inter_bgrp_comm )
+       CALL mp_sum( kpsi(:,1:notconv), inter_bgrp_comm )
        !
     END IF
     !
     ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
     IF ( gstart == 2 ) &
-    kpsi (1,1:nbnd) = CMPLX( DBLE( kpsi (1,1:nbnd) ), 0._DP, kind=DP )
+    kpsi (1,1:notconv) = CMPLX( DBLE( kpsi (1,1:notconv) ), 0._DP, kind=DP )
     !
     ! ... Operate the Hamiltonian : H K (H - eS) |psi>
     !
-    CALL h_psi( npwx, npw, nbnd, kpsi, hkpsi )
+    CALL h_psi( npwx, npw, notconv, kpsi, hkpsi )
     !
     ! ... Operate the Overlap : S K (H - eS) |psi>
     !
-    IF ( uspp ) CALL s_psi( npwx, npw, nbnd, kpsi, skpsi )
+    IF ( uspp ) CALL s_psi( npwx, npw, notconv, kpsi, skpsi )
     !
     ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
     IF ( gstart == 2 ) THEN
@@ -709,60 +743,69 @@ CONTAINS
     !
     DO ibnd = ibnd_start, ibnd_end
        !
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
+       !
        php = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, hpsi (1,ibnd), 1 )
-       khp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, hpsi (1,ibnd), 1 )
-       khk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, hkpsi(1,ibnd), 1 )
+       khp = 2._DP * DDOT( 2 * npw, kpsi(1,kbnd), 1, hpsi (1,ibnd), 1 )
+       khk = 2._DP * DDOT( 2 * npw, kpsi(1,kbnd), 1, hkpsi(1,kbnd), 1 )
        !
        IF ( gstart == 2 ) THEN
           !
           php = php - DBLE( psi (1,ibnd) ) * DBLE ( hpsi (1,ibnd) )
-          khp = khp - DBLE( kpsi(1,ibnd) ) * DBLE ( hpsi (1,ibnd) )
-          khk = khk - DBLE( kpsi(1,ibnd) ) * DBLE ( hkpsi(1,ibnd) )
+          khp = khp - DBLE( kpsi(1,kbnd) ) * DBLE ( hpsi (1,ibnd) )
+          khk = khk - DBLE( kpsi(1,kbnd) ) * DBLE ( hkpsi(1,kbnd) )
           !
        END IF
        !
        IF ( uspp ) THEN
           !
           psp = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, spsi (1,ibnd), 1 )
-          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, spsi (1,ibnd), 1 )
-          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, skpsi(1,ibnd), 1 )
+          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,kbnd), 1, spsi (1,ibnd), 1 )
+          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,kbnd), 1, skpsi(1,kbnd), 1 )
           !
           IF ( gstart == 2 ) THEN
              !
              psp = psp - DBLE( psi (1,ibnd) ) * DBLE ( spsi (1,ibnd) )
-             ksp = ksp - DBLE( kpsi(1,ibnd) ) * DBLE ( spsi (1,ibnd) )
-             ksk = ksk - DBLE( kpsi(1,ibnd) ) * DBLE ( skpsi(1,ibnd) )
+             ksp = ksp - DBLE( kpsi(1,kbnd) ) * DBLE ( spsi (1,ibnd) )
+             ksk = ksk - DBLE( kpsi(1,kbnd) ) * DBLE ( skpsi(1,kbnd) )
              !
           END IF
           !
        ELSE
           !
           psp = 2._DP * DDOT( 2 * npw, psi (1,ibnd), 1, psi (1,ibnd), 1 )
-          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, psi (1,ibnd), 1 )
-          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,ibnd), 1, kpsi(1,ibnd), 1 )
+          ksp = 2._DP * DDOT( 2 * npw, kpsi(1,kbnd), 1, psi (1,ibnd), 1 )
+          ksk = 2._DP * DDOT( 2 * npw, kpsi(1,kbnd), 1, kpsi(1,kbnd), 1 )
           !
           IF ( gstart == 2 ) THEN
              !
              psp = psp - DBLE( psi (1,ibnd) ) * DBLE ( psi (1,ibnd) )
-             ksp = ksp - DBLE( kpsi(1,ibnd) ) * DBLE ( psi (1,ibnd) )
-             ksk = ksk - DBLE( kpsi(1,ibnd) ) * DBLE ( kpsi(1,ibnd) )
+             ksp = ksp - DBLE( kpsi(1,kbnd) ) * DBLE ( psi (1,ibnd) )
+             ksk = ksk - DBLE( kpsi(1,kbnd) ) * DBLE ( kpsi(1,kbnd) )
              !
           END IF
           !
        END IF
        !
-       hmat(1,ibnd) = php
-       hmat(2,ibnd) = khp
-       hmat(3,ibnd) = khk
+       hmat(1,jbnd) = php
+       hmat(2,jbnd) = khp
+       hmat(3,jbnd) = khk
        !
-       smat(1,ibnd) = psp
-       smat(2,ibnd) = ksp
-       smat(3,ibnd) = ksk
+       smat(1,jbnd) = psp
+       smat(2,jbnd) = ksp
+       smat(3,jbnd) = ksk
        !
     END DO
     !
-    CALL mp_sum( hmat, intra_bgrp_comm )
-    CALL mp_sum( smat, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_sum( hmat, intra_bgrp_comm )
+       CALL mp_sum( smat, intra_bgrp_comm )
+       !
+    END IF
     !
     ! ... Line searching for each band
     !
@@ -770,13 +813,17 @@ CONTAINS
        !
        DO ibnd = ibnd_start, ibnd_end
           !
-          php = hmat(1,ibnd)
-          khp = hmat(2,ibnd)
-          khk = hmat(3,ibnd)
+          IF ( conv(ibnd) ) CYCLE
           !
-          psp = smat(1,ibnd)
-          ksp = smat(2,ibnd)
-          ksk = smat(3,ibnd)
+          jbnd = jbnd_index(ibnd)
+          !
+          php = hmat(1,jbnd)
+          khp = hmat(2,jbnd)
+          khk = hmat(3,jbnd)
+          !
+          psp = smat(1,jbnd)
+          ksp = smat(2,jbnd)
+          ksk = smat(3,jbnd)
           IF( psp <= eps16 ) CALL errore( ' rrmmdiagg ', ' psp <= 0 ', 1 )
           !
           norm = psp + 2._DP * ksp * SREF + ksk * SREF * SREF
@@ -796,61 +843,87 @@ CONTAINS
           IF( norm <= eps16 ) CALL errore( ' rrmmdiagg ', ' norm <= 0 ', 1 )
           norm  = SQRT( norm )
           !
-          coef(1,ibnd) = 1._DP / norm
-          coef(2,ibnd) = step  / norm
+          coef(1,jbnd) = 1._DP / norm
+          coef(2,jbnd) = step  / norm
           !
           ! ... Update current matrix elements
           !
-          c1 = coef(1,ibnd)
-          c2 = coef(2,ibnd)
+          c1 = coef(1,jbnd)
+          c2 = coef(2,jbnd)
           !
-          hw(ibnd) = php * c1 * c1 + 2._DP * khp * c1 * c2 + khk * c2 * c2
-          sw(ibnd) = psp * c1 * c1 + 2._DP * ksp * c1 * c2 + ksk * c2 * c2
+          heig(jbnd) = php * c1 * c1 + 2._DP * khp * c1 * c2 + khk * c2 * c2
+          seig(jbnd) = psp * c1 * c1 + 2._DP * ksp * c1 * c2 + ksk * c2 * c2
           !
        END DO
        !
     END IF
     !
-    CALL mp_bcast( coef, root_bgrp, intra_bgrp_comm )
-    CALL mp_bcast( hw(ibnd_start:ibnd_end), root_bgrp, intra_bgrp_comm )
-    CALL mp_bcast( sw(ibnd_start:ibnd_end), root_bgrp, intra_bgrp_comm )
+    IF ( motconv > 0 ) THEN
+       !
+       CALL mp_bcast( coef, root_bgrp, intra_bgrp_comm )
+       CALL mp_bcast( heig, root_bgrp, intra_bgrp_comm )
+       CALL mp_bcast( seig, root_bgrp, intra_bgrp_comm )
+       !
+    END IF
+    !
+    DO ibnd = ibnd_start, ibnd_end
+       !
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       !
+       hw(ibnd) = heig(jbnd)
+       sw(ibnd) = seig(jbnd)
+       !
+    END DO
     !
     ! ... Update current wave functions
     !
     DO ibnd = ibnd_start, ibnd_end
        !
-       c1 = coef(1,ibnd)
-       c2 = coef(2,ibnd)
+       IF ( conv(ibnd) ) CYCLE
+       !
+       jbnd = jbnd_index(ibnd)
+       kbnd = ibnd_index(ibnd)
+       !
+       c1 = coef(1,jbnd)
+       c2 = coef(2,jbnd)
        !
        CALL DSCAL( 2 * npw, c1, psi (1,ibnd), 1 )
-       CALL DAXPY( 2 * npw, c2, kpsi(1,ibnd), 1, psi(1,ibnd), 1 )
+       CALL DAXPY( 2 * npw, c2, kpsi(1,kbnd), 1, psi(1,ibnd), 1 )
        !
        CALL DSCAL( 2 * npw, c1, hpsi (1,ibnd), 1 )
-       CALL DAXPY( 2 * npw, c2, hkpsi(1,ibnd), 1, hpsi(1,ibnd), 1 )
+       CALL DAXPY( 2 * npw, c2, hkpsi(1,kbnd), 1, hpsi(1,ibnd), 1 )
        !
        IF ( uspp ) THEN
           !
           CALL DSCAL( 2 * npw, c1, spsi (1,ibnd), 1 )
-          CALL DAXPY( 2 * npw, c2, skpsi(1,ibnd), 1, spsi(1,ibnd), 1 )
+          CALL DAXPY( 2 * npw, c2, skpsi(1,kbnd), 1, spsi(1,ibnd), 1 )
+          !
+       END IF
+       !
+       ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
+       IF ( gstart == 2 ) THEN
+          !
+          psi (1,ibnd) = CMPLX( DBLE( psi (1,ibnd) ), 0._DP, kind=DP )
+          hpsi(1,ibnd) = CMPLX( DBLE( hpsi(1,ibnd) ), 0._DP, kind=DP )
+          IF ( uspp ) &
+          spsi(1,ibnd) = CMPLX( DBLE( spsi(1,ibnd) ), 0._DP, kind=DP )
           !
        END IF
        !
     END DO
     !
-    ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
-    IF ( gstart == 2 ) THEN
+    IF ( motconv > 0 ) THEN
        !
-       psi (1,1:nbnd) = CMPLX( DBLE( psi (1,1:nbnd) ), 0._DP, kind=DP )
-       hpsi(1,1:nbnd) = CMPLX( DBLE( hpsi(1,1:nbnd) ), 0._DP, kind=DP )
-       IF ( uspp ) &
-       spsi(1,1:nbnd) = CMPLX( DBLE( spsi(1,1:nbnd) ), 0._DP, kind=DP )
+       DEALLOCATE( ekin )
+       DEALLOCATE( hmat )
+       DEALLOCATE( smat )
+       DEALLOCATE( heig )
+       DEALLOCATE( seig )
+       DEALLOCATE( coef )
        !
     END IF
-    !
-    DEALLOCATE( ekin )
-    DEALLOCATE( hmat )
-    DEALLOCATE( smat )
-    DEALLOCATE( coef )
     !
     RETURN
     !
