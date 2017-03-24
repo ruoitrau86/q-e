@@ -181,11 +181,11 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
   !
   REAL (KIND=DP), INTENT(INOUT) :: avg_iter
   !
-  REAL (KIND=DP) :: cg_iter
+  REAL (KIND=DP) :: cg_iter, rmm_iter
   ! (weighted) number of iterations in Conjugate-Gradient
-  INTEGER :: npw, ig, dav_iter, rmm_iter, ntry, notconv
+  ! (weighted) number of iterations in RMM-DIIS
+  INTEGER :: npw, ig, dav_iter, ntry, notconv
   ! number of iterations in Davidson
-  ! number of iterations in RMM-DIIS
   ! number or repeated call to diagonalization in case of non convergence
   ! number of notconverged elements
   INTEGER :: ierr, ipw, ibnd, ibnd_start, ibnd_end

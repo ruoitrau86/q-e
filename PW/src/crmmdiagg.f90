@@ -38,7 +38,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   INTEGER,     INTENT(IN)    :: ndiis
   LOGICAL,     INTENT(IN)    :: uspp
   INTEGER,     INTENT(OUT)   :: notconv
-  INTEGER,     INTENT(OUT)   :: rmm_iter
+  REAL(DP),    INTENT(OUT)   :: rmm_iter
   !
   ! ... local variables
   !
@@ -155,7 +155,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   ibnd_index = 0
   jbnd_index = 0
   !
-  rmm_iter = 0
+  rmm_iter = 0._DP
   notconv  = nbnd
   motconv  = ibnd_size
   !
@@ -167,7 +167,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   DO idiis = 1, ndiis
      !
-     rmm_iter = rmm_iter + 1
+     rmm_iter = rmm_iter + DBLE( notconv )
      !
      ! ... Perform DIIS
      !
@@ -184,6 +184,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
      IF ( notconv == 0 ) EXIT
      !
   END DO
+  !
+  rmm_iter = rmm_iter / DBLE( nbnd )
   !
   ! ... Merge wave functions
   !
