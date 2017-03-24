@@ -9,7 +9,7 @@
 #define ZERO ( 0._DP, 0._DP )
 !
 !----------------------------------------------------------------------------
-SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
+SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
                       g2kin, btype, ethr, ndiis, uspp, gstart, notconv, rmm_iter )
   !----------------------------------------------------------------------------
   !
@@ -28,8 +28,9 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   ! ... I/O variables
   !
   INTEGER,     INTENT(IN)    :: npwx, npw, nbnd
-  COMPLEX(DP), INTENT(INOUT) :: psi(npwx,nbnd)
-  COMPLEX(DP), INTENT(OUT)   :: spsi(npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi (npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: spsi(npwx,nbnd)
   REAL(DP),    INTENT(OUT)   :: e(nbnd)
   REAL(DP),    INTENT(IN)    :: g2kin(npwx)
   INTEGER,     INTENT(IN)    :: btype(nbnd)
@@ -50,7 +51,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   INTEGER,     ALLOCATABLE :: jbnd_index(:)
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), kpsi(:,:), hkpsi(:,:), skpsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: kpsi(:,:), hkpsi(:,:), skpsi(:,:)
   REAL(DP),    ALLOCATABLE :: hr(:,:,:), sr(:,:,:)
   REAL(DP),    ALLOCATABLE :: php(:,:), psp(:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
@@ -80,9 +81,6 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
      IF( ierr /= 0 ) CALL errore( ' rrmmdiagg ', ' cannot allocate sphi ', ABS(ierr) )
      !
   END IF
-  !
-  ALLOCATE( hpsi( npwx, nbnd ), STAT=ierr )
-  IF( ierr /= 0 ) CALL errore( ' rrmmdiagg ', ' cannot allocate hpsi ', ABS(ierr) )
   !
   ALLOCATE( kpsi( npwx, nbnd ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' rrmmdiagg ', ' cannot allocate kpsi ', ABS(ierr) )
@@ -123,6 +121,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   !
   hpsi  = ZERO
   IF ( uspp ) spsi = ZERO
+  !
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
@@ -182,25 +181,30 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, spsi, e, &
   !
   IF ( ibnd_start > 1 ) THEN
      !
-     psi(:,1:(ibnd_start-1)) = ZERO
-     IF ( uspp ) spsi(:,1:(ibnd_start-1)) = ZERO
+     psi (:,1:(ibnd_start-1)) = ZERO
+     hpsi(:,1:(ibnd_start-1)) = ZERO
+     IF ( uspp ) &
+     spsi(:,1:(ibnd_start-1)) = ZERO
      !
   END IF
   !
   IF ( ibnd_end < nbnd ) THEN
      !
-     psi(:,(ibnd_end+1):nbnd) = ZERO
-     IF ( uspp ) spsi(:,(ibnd_end+1):nbnd) = ZERO
+     psi (:,(ibnd_end+1):nbnd) = ZERO
+     hpsi(:,(ibnd_end+1):nbnd) = ZERO
+     IF ( uspp ) &
+     spsi(:,(ibnd_end+1):nbnd) = ZERO
      !
   END IF
   !
-  CALL mp_sum( psi, inter_bgrp_comm )
-  IF ( uspp ) CALL mp_sum( spsi, inter_bgrp_comm )
+  CALL mp_sum( psi,  inter_bgrp_comm )
+  CALL mp_sum( hpsi, inter_bgrp_comm )
+  IF ( uspp ) &
+  CALL mp_sum( spsi, inter_bgrp_comm )
   !
   DEALLOCATE( phi )
   DEALLOCATE( hphi )
   IF ( uspp ) DEALLOCATE( sphi )
-  DEALLOCATE( hpsi )
   DEALLOCATE( kpsi )
   DEALLOCATE( hkpsi )
   IF ( uspp ) DEALLOCATE( skpsi )

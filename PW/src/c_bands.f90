@@ -193,7 +193,8 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
   LOGICAL :: lrot
   ! .TRUE. if the wfc have already be rotated
   !
-  COMPLEX (KIND=DP), POINTER :: sevc(:,:)
+  COMPLEX (KIND=DP), POINTER :: hevc(:,:), sevc(:,:)
+  ! hamiltonian x wavefunctions, only for RMM-DIIS
   ! overlap x wavefunctions, only for RMM-DIIS
   !
   ALLOCATE( h_diag( npwx, npol ), STAT=ierr )
@@ -299,6 +300,8 @@ CONTAINS
        !
        ! ... RMM-DIIS diagonalization
        !
+       ALLOCATE( hevc( npwx, nbnd ) )
+       !
        IF ( okvan ) THEN
           ALLOCATE( sevc( npwx, nbnd ) )
        ELSE
@@ -319,7 +322,7 @@ CONTAINS
              !
           END IF
           !
-          CALL rrmmdiagg( npwx, npw, nbnd, evc, sevc, et(1,ik), &
+          CALL rrmmdiagg( npwx, npw, nbnd, evc, hevc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, gstart, notconv, rmm_iter )
           !
           IF ( lscf .AND. ( .NOT. rmm_conv ) ) notconv = 0
@@ -336,10 +339,12 @@ CONTAINS
        !
        ! ... Gram-Schmidt orthogonalization
        !
-       CALL gram_schmidt( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
+       CALL gram_schmidt( npwx, npw, nbnd, npol, evc, hevc, sevc, et(1,ik), &
                           okvan, .TRUE., .NOT. lscf, gstart, gs_nblock )
        !
        avg_iter = avg_iter + 1.D0
+       !
+       DEALLOCATE( hevc )
        !
        IF ( okvan ) THEN
           DEALLOCATE( sevc )
@@ -486,6 +491,8 @@ CONTAINS
        !
        ! ... RMM-DIIS diagonalization
        !
+       ALLOCATE( hevc( npwx*npol, nbnd ) )
+       !
        IF ( okvan ) THEN
           ALLOCATE( sevc( npwx*npol, nbnd ) )
        ELSE
@@ -506,7 +513,7 @@ CONTAINS
              !
           END IF
           !
-          CALL crmmdiagg( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
+          CALL crmmdiagg( npwx, npw, nbnd, npol, evc, hevc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, notconv, rmm_iter )
           !
           IF ( lscf .AND. ( .NOT. rmm_conv ) ) notconv = 0
@@ -523,10 +530,12 @@ CONTAINS
        !
        ! ... Gram-Schmidt orthogonalization
        !
-       CALL gram_schmidt( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
+       CALL gram_schmidt( npwx, npw, nbnd, npol, evc, hevc, sevc, et(1,ik), &
                           okvan, .TRUE., .NOT. lscf, gstart, gs_nblock )
        !
        avg_iter = avg_iter + 1.D0
+       !
+       DEALLOCATE( hevc )
        !
        IF ( okvan ) THEN
           DEALLOCATE( sevc )

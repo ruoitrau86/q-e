@@ -7,7 +7,7 @@
 ! or http://www.gnu.org/copyleft/gpl.txt .
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, spsi, e, &
+SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
                          uspp, eigen, reorder, gstart, nbsize )
   !--------------------------------------------------------------------------
   !
@@ -22,6 +22,7 @@ SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
   REAL(DP),    INTENT(OUT)   :: e(nbnd)
   LOGICAL,     INTENT(IN)    :: uspp
@@ -34,12 +35,12 @@ SUBROUTINE gram_schmidt( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   IF ( gamma_only ) THEN
      !
-     CALL gram_schmidt_gamma( npwx, npw, nbnd, psi, spsi, e, &
+     CALL gram_schmidt_gamma( npwx, npw, nbnd, psi, hpsi, spsi, e, &
                               uspp, eigen, reorder, gstart, nbsize )
      !
   ELSE
      !
-     CALL gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
+     CALL gram_schmidt_k( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
                           uspp, eigen, reorder, nbsize )
      !
   END IF

@@ -11,7 +11,7 @@
 #define MONE (-1._DP, 0._DP )
 !
 !--------------------------------------------------------------------------
-SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
+SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
                            uspp, eigen, reorder, nbsize )
   !--------------------------------------------------------------------------
   !
@@ -29,6 +29,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   INTEGER,     INTENT(IN)    :: npw, npwx, nbnd, npol
   COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
   REAL(DP),    INTENT(INOUT) :: e(nbnd)
   LOGICAL,     INTENT(IN)    :: uspp
@@ -45,7 +46,7 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   INTEGER                  :: jblock_start, jblock_end
   INTEGER                  :: ibnd_start, ibnd_end
   INTEGER                  :: jbnd_start, jbnd_end
-  COMPLEX(DP), ALLOCATABLE :: phi(:,:), sphi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: phi(:,:), hphi(:,:), sphi(:,:)
   INTEGER,     ALLOCATABLE :: owner_bgrp_id(:)
   !
   IF ( npol == 1 ) THEN
@@ -81,12 +82,15 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   END IF
   !
   ALLOCATE( phi ( kdmx, nbnd ) )
-  IF ( uspp ) ALLOCATE( sphi( kdmx, nbnd ) )
+  IF ( eigen_ ) ALLOCATE( hphi( kdmx, nbnd ) )
+  IF ( uspp )   ALLOCATE( sphi( kdmx, nbnd ) )
   ALLOCATE( owner_bgrp_id( nblock ) )
   !
   phi = ZERO
   !
-  IF ( uspp ) sphi = ZERO
+  IF ( eigen_ ) hphi = ZERO
+  !
+  IF ( uspp )   sphi = ZERO
   !
   ! ... Set owers of blocks
   !
@@ -104,6 +108,9 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   ! ... Set initial : |phi_j> = |psi_j>
   !
   CALL ZCOPY( kdmx * nbnd, psi(1,1), 1, phi(1,1), 1 )
+  !
+  IF ( eigen_ ) &
+  CALL ZCOPY( kdmx * nbnd, hpsi(1,1), 1, hphi(1,1), 1 )
   !
   IF ( uspp ) &
   CALL ZCOPY( kdmx * nbnd, spsi(1,1), 1, sphi(1,1), 1 )
@@ -123,6 +130,9 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
      ! ... Bcast diagonal block
      !
      CALL mp_bcast( phi(:,ibnd_start:ibnd_end), owner_bgrp_id(iblock), inter_bgrp_comm )
+     !
+     IF ( eigen_ ) &
+     CALL mp_bcast( hphi(:,ibnd_start:ibnd_end), owner_bgrp_id(iblock), inter_bgrp_comm )
      !
      IF ( uspp ) &
      CALL mp_bcast( sphi(:,ibnd_start:ibnd_end), owner_bgrp_id(iblock), inter_bgrp_comm )
@@ -144,6 +154,9 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   CALL ZCOPY( kdmx * nbnd, phi(1,1), 1, psi(1,1), 1 )
   !
+  IF ( eigen_ ) &
+  CALL ZCOPY( kdmx * nbnd, hphi(1,1), 1, hpsi(1,1), 1 )
+  !
   IF ( uspp ) &
   CALL ZCOPY( kdmx * nbnd, sphi(1,1), 1, spsi(1,1), 1 )
   !
@@ -156,7 +169,8 @@ SUBROUTINE gram_schmidt_k( npwx, npw, nbnd, npol, psi, spsi, e, &
   IF ( reorder ) CALL sort_vectors( )
   !
   DEALLOCATE( phi )
-  IF ( uspp ) DEALLOCATE( sphi )
+  IF ( eigen_ ) DEALLOCATE( hphi )
+  IF ( uspp )   DEALLOCATE( sphi )
   DEALLOCATE( owner_bgrp_id )
   !
   RETURN
@@ -203,6 +217,10 @@ CONTAINS
           CALL ZGEMV( 'N', kdim, ibnd - ibnd_start, MONE, phi(1,ibnd_start), kdmx, &
                       sc(ibnd_start), 1, ONE, phi(1,ibnd), 1 )
           !
+          IF ( eigen_ ) &
+          CALL ZGEMV( 'N', kdim, ibnd - ibnd_start, MONE, hphi(1,ibnd_start), kdmx, &
+                      sc(ibnd_start), 1, ONE, hphi(1,ibnd), 1 )
+          !
           IF ( uspp ) &
           CALL ZGEMV( 'N', kdim, ibnd - ibnd_start, MONE, sphi(1,ibnd_start), kdmx, &
                       sc(ibnd_start), 1, ONE, sphi(1,ibnd), 1 )
@@ -229,6 +247,9 @@ CONTAINS
        CALL errore( ' gram_schmidt_k ', ' vectors are linear dependent ', 1 )
        !
        CALL ZDSCAL( kdim, 1._DP / norm, phi(1,ibnd), 1 )
+       !
+       IF ( eigen_ ) &
+       CALL ZDSCAL( kdim, 1._DP / norm, hphi(1,ibnd), 1 )
        !
        IF ( uspp ) &
        CALL ZDSCAL( kdim, 1._DP / norm, sphi(1,ibnd), 1 )
@@ -279,6 +300,10 @@ CONTAINS
     CALL ZGEMM( 'N', 'N', kdim, jbnd_size, ibnd_size, MONE, phi(1,ibnd_start), kdmx, &
                 sc(ibnd_start,jbnd_start), ibnd_size, ONE, phi(1,jbnd_start), kdmx )
     !
+    IF ( eigen_ ) &
+    CALL ZGEMM( 'N', 'N', kdim, jbnd_size, ibnd_size, MONE, hphi(1,ibnd_start), kdmx, &
+                sc(ibnd_start,jbnd_start), ibnd_size, ONE, hphi(1,jbnd_start), kdmx )
+    !
     IF ( uspp ) &
     CALL ZGEMM( 'N', 'N', kdim, jbnd_size, ibnd_size, MONE, sphi(1,ibnd_start), kdmx, &
                 sc(ibnd_start,jbnd_start), ibnd_size, ONE, sphi(1,jbnd_start), kdmx )
@@ -294,19 +319,11 @@ CONTAINS
     !
     IMPLICIT NONE
     !
-    INTEGER                  :: ibnd, ibnd_start, ibnd_end
-    COMPLEX(DP), ALLOCATABLE :: hpsi(:,:)
-    COMPLEX(DP), EXTERNAL    :: ZDOTC
+    INTEGER :: ibnd, ibnd_start, ibnd_end
     !
-    ALLOCATE( hpsi ( kdmx, nbnd ) )
+    COMPLEX(DP), EXTERNAL :: ZDOTC
     !
-    ! ... H |psi>
-    !
-    CALL h_psi( npwx, npw, nbnd, psi, hpsi )
-    !
-    ! ... <psi| H |psi>
-    !
-    CALL set_bgrp_indices( nbnd, ibnd_start, ibnd_end )
+    ! ... <psi_i| H |psi_i>
     !
     e(:) = 0._DP
     !
@@ -318,8 +335,6 @@ CONTAINS
     !
     CALL mp_sum( e(ibnd_start:ibnd_end), intra_bgrp_comm )
     CALL mp_sum( e, inter_bgrp_comm )
-    !
-    DEALLOCATE( hpsi )
     !
     RETURN
     !
@@ -347,6 +362,9 @@ CONTAINS
           e(ibnd-1) = e0
           !
           CALL ZSWAP( kdim, psi(1,ibnd), 1, psi(1,ibnd-1), 1 )
+          !
+          IF ( eigen_ ) &
+          CALL ZSWAP( kdim, hpsi(1,ibnd), 1, hpsi(1,ibnd-1), 1 )
           !
           IF ( uspp ) &
           CALL ZSWAP( kdim, spsi(1,ibnd), 1, spsi(1,ibnd-1), 1 )

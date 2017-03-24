@@ -10,7 +10,7 @@
 #define ONE  ( 1._DP, 0._DP )
 !
 !----------------------------------------------------------------------------
-SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
+SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
                       g2kin, btype, ethr, ndiis, uspp, notconv, rmm_iter )
   !----------------------------------------------------------------------------
   !
@@ -29,8 +29,9 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   ! ... I/O variables
   !
   INTEGER,     INTENT(IN)    :: npwx, npw, nbnd, npol
-  COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nbnd)
-  COMPLEX(DP), INTENT(OUT)   :: spsi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi (npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
   REAL(DP),    INTENT(OUT)   :: e(nbnd)
   REAL(DP),    INTENT(IN)    :: g2kin(npwx)
   INTEGER,     INTENT(IN)    :: btype(nbnd)
@@ -51,7 +52,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   INTEGER,     ALLOCATABLE :: jbnd_index(:)
   REAL(DP)                 :: empty_ethr
   COMPLEX(DP), ALLOCATABLE :: phi(:,:,:), hphi(:,:,:), sphi(:,:,:)
-  COMPLEX(DP), ALLOCATABLE :: hpsi(:,:), kpsi(:,:), hkpsi(:,:), skpsi(:,:)
+  COMPLEX(DP), ALLOCATABLE :: kpsi(:,:), hkpsi(:,:), skpsi(:,:)
   COMPLEX(DP), ALLOCATABLE :: hc(:,:,:), sc(:,:,:)
   REAL(DP),    ALLOCATABLE :: php(:,:), psp(:,:)
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
@@ -94,9 +95,6 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
      !
   END IF
   !
-  ALLOCATE( hpsi( kdmx, nbnd ), STAT=ierr )
-  IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate hpsi ', ABS(ierr) )
-  !
   ALLOCATE( kpsi( kdmx, nbnd ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate kpsi ', ABS(ierr) )
   !
@@ -136,6 +134,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   hpsi  = ZERO
   IF ( uspp ) spsi = ZERO
+  !
   kpsi  = ZERO
   hkpsi = ZERO
   IF ( uspp ) skpsi = ZERO
@@ -191,25 +190,30 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   !
   IF ( ibnd_start > 1 ) THEN
      !
-     psi(:,1:(ibnd_start-1)) = ZERO
-     IF ( uspp ) spsi(:,1:(ibnd_start-1)) = ZERO
+     psi (:,1:(ibnd_start-1)) = ZERO
+     hpsi(:,1:(ibnd_start-1)) = ZERO
+     IF ( uspp ) &
+     spsi(:,1:(ibnd_start-1)) = ZERO
      !
   END IF
   !
   IF ( ibnd_end < nbnd ) THEN
      !
-     psi(:,(ibnd_end+1):nbnd) = ZERO
-     IF ( uspp ) spsi(:,(ibnd_end+1):nbnd) = ZERO
+     psi (:,(ibnd_end+1):nbnd) = ZERO
+     hpsi(:,(ibnd_end+1):nbnd) = ZERO
+     IF ( uspp ) &
+     spsi(:,(ibnd_end+1):nbnd) = ZERO
      !
   END IF
   !
-  CALL mp_sum( psi, inter_bgrp_comm )
-  IF ( uspp ) CALL mp_sum( spsi, inter_bgrp_comm )
+  CALL mp_sum( psi,  inter_bgrp_comm )
+  CALL mp_sum( hpsi, inter_bgrp_comm )
+  IF ( uspp ) &
+  CALL mp_sum( spsi, inter_bgrp_comm )
   !
   DEALLOCATE( phi )
   DEALLOCATE( hphi )
   IF ( uspp ) DEALLOCATE( sphi )
-  DEALLOCATE( hpsi )
   DEALLOCATE( kpsi )
   DEALLOCATE( hkpsi )
   IF ( uspp ) DEALLOCATE( skpsi )
