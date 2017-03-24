@@ -1901,7 +1901,7 @@ input_description -distribution {Quantum Espresso} -package PWscf -program pw.x 
         }
 
         var diago_rmm_ndim -type INTEGER { 
-            default { 4 }
+            default { 8 }
             info {
                 For RMM-DIIS diagonalization: dimension of workspace
                 (number of wavefunction packets, at least 2 needed).
