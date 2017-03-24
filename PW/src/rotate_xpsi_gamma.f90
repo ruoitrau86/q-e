@@ -25,7 +25,7 @@ SUBROUTINE rotate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, evc
   !
   ! ... I/O variables
   !
-  INTEGER, INTENT(IN) :: npw, npwx, nstart, nbnd, gstart, ibnd
+  INTEGER, INTENT(IN) :: npw, npwx, nstart, nbnd, gstart
     ! dimension of the matrix to be diagonalized
     ! leading dimension of matrix psi, as declared in the calling pgm unit
     ! input number of states
@@ -33,10 +33,10 @@ SUBROUTINE rotate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, evc
     ! first G with nonzero norm
   LOGICAL, INTENT(IN) :: overlap
     ! if .FALSE. : S|psi> not needed
-  COMPLEX(DP), INTENT(IN)  :: psi(npwx,nstart)
-  COMPLEX(DP), INTENT(OUT) :: evc(npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi(npwx,nstart)
+  COMPLEX(DP), INTENT(OUT)   :: evc(npwx,nbnd)
     ! input and output eigenvectors (may overlap)
-  COMPLEX(DP), INTENT(OUT) :: hevc(npwx*npol,nbnd), sevc(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(OUT) :: hevc(npwx,nbnd), sevc(npwx,nbnd)
     ! H|psi> and S|psi>
   REAL(DP), INTENT(OUT) :: e(nbnd)
     ! eigenvalues
@@ -69,7 +69,7 @@ SUBROUTINE rotate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, evc
   CALL DGEMM( 'T', 'N', nstart, nstart, 2 * npw, 2.D0 , psi,  2 * npwx, hpsi, 2 * npwx, 0.D0, hr, nstart )
   !  
   IF ( gstart == 2 ) &
-     call DGER( nstart, nstart, -1.D0, psi, 2 * npwx, hpsi, &
+     CALL DGER( nstart, nstart, -1.D0, psi, 2 * npwx, hpsi, &
                 2 * npwx, hr, nstart )
   !     
   CALL mp_sum(  hr , intra_bgrp_comm )
@@ -157,10 +157,10 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
     ! first G with nonzero norm
   LOGICAL, INTENT(IN) :: overlap
     ! if .FALSE. : S|psi> not needed
-  COMPLEX(DP), INTENT(IN)  :: psi(npwx,nstart)
-  COMPLEX(DP), INTENT(OUT) :: evc(npwx,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi(npwx,nstart)
+  COMPLEX(DP), INTENT(OUT)   :: evc(npwx,nbnd)
     ! input and output eigenvectors (may overlap)
-  COMPLEX(DP), INTENT(OUT) :: hevc(npwx*npol,nbnd), sevc(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(OUT) :: hevc(npwx,nbnd), sevc(npwx,nbnd)
     ! H|psi> and S|psi>
   REAL(DP), INTENT(OUT) :: e(nbnd)
     ! eigenvalues
@@ -179,8 +179,6 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
     ! flag to distinguish procs involved in linear algebra
   TYPE(la_descriptor), ALLOCATABLE :: desc_ip( :, : )
   INTEGER, ALLOCATABLE :: rank_ip( :, : )
-  !
-  Integer :: ibnd
   !
   ALLOCATE( desc_ip( np_ortho(1), np_ortho(2) ) )
   ALLOCATE( rank_ip( np_ortho(1), np_ortho(2) ) )

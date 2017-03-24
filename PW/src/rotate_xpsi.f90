@@ -36,8 +36,8 @@ SUBROUTINE rotate_xpsi &
     ! number of spin polarizations
   LOGICAL, INTENT(IN) :: overlap
     ! if .FALSE. : S|psi> not needed
-  COMPLEX(DP), INTENT(IN)  :: psi(npwx*npol,nstart)
-  COMPLEX(DP), INTENT(OUT) :: evc(npwx*npol,nbnd)
+  COMPLEX(DP), INTENT(INOUT) :: psi(npwx*npol,nstart)
+  COMPLEX(DP), INTENT(OUT)   :: evc(npwx*npol,nbnd)
     ! input and output eigenvectors (may overlap)
   COMPLEX(DP), INTENT(OUT) :: hevc(npwx*npol,nbnd), sevc(npwx*npol,nbnd)
     ! H|psi> and S|psi>
