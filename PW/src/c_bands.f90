@@ -324,7 +324,7 @@ CONTAINS
           END IF
           !
           CALL rrmmdiagg( npwx, npw, nbnd, evc, hevc, sevc, et(1,ik), &
-               g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, gstart, notconv, rmm_iter )
+               g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, lrot, gstart, notconv, rmm_iter )
           !
           IF ( lscf .AND. ( .NOT. rmm_conv ) ) notconv = 0
           !
@@ -516,7 +516,7 @@ CONTAINS
           END IF
           !
           CALL crmmdiagg( npwx, npw, nbnd, npol, evc, hevc, sevc, et(1,ik), &
-               g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, notconv, rmm_iter )
+               g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, lrot, notconv, rmm_iter )
           !
           IF ( lscf .AND. ( .NOT. rmm_conv ) ) notconv = 0
           !

@@ -71,7 +71,7 @@ SUBROUTINE rotate_xpsi_k( npwx, npw, nstart, nbnd, npol, psi, overlap, evc, hevc
   !
   CALL h_psi( npwx, npw, nstart, psi, hpsi )
   !
-  call ZGEMM( 'C', 'N', nstart, nstart, kdim, ( 1.D0, 0.D0 ), psi, kdmx,  hpsi, kdmx, ( 0.D0, 0.D0 ), hc, nstart )
+  CALL ZGEMM( 'C', 'N', nstart, nstart, kdim, ( 1.D0, 0.D0 ), psi, kdmx,  hpsi, kdmx, ( 0.D0, 0.D0 ), hc, nstart )
   !            
   CALL mp_sum(  hc , intra_bgrp_comm )
   !
@@ -364,6 +364,7 @@ CONTAINS
                  IF ( overlap ) &
                  CALL ZGEMM( 'N', 'N', kdim, nc, nr, ( 1.D0, 0.D0 ),  &
                              spsi(1,ir), kdmx, vc, nx, beta, sevc(1,ic), kdmx )
+                 !
               ELSE
                  !
                  !  all other procs receive
@@ -379,6 +380,7 @@ CONTAINS
                  IF ( overlap ) &
                  CALL ZGEMM( 'N', 'N', kdim, nc, nr, ( 1.D0, 0.D0 ),  &
                              spsi(1,ir), kdmx, vtmp, nx, beta, sevc(1,ic), kdmx )
+                 !
               END IF
               ! 
 

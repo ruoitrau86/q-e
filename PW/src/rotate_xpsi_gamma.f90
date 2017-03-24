@@ -209,6 +209,7 @@ SUBROUTINE protate_xpsi_gamma( npwx, npw, nstart, gstart, nbnd, psi, overlap, ev
   IF ( overlap ) THEN
      !
      CALL s_psi( npwx, npw, nstart, psi, spsi )
+     !
      CALL compute_distmat( sr, psi, spsi )
      !              
   ELSE

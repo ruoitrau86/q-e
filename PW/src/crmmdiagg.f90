@@ -11,7 +11,7 @@
 !
 !----------------------------------------------------------------------------
 SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
-                      g2kin, btype, ethr, ndiis, uspp, notconv, rmm_iter )
+                      g2kin, btype, ethr, ndiis, uspp, do_hpsi, notconv, rmm_iter )
   !----------------------------------------------------------------------------
   !
   ! ... Iterative diagonalization of a complex hermitian matrix
@@ -38,6 +38,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   REAL(DP),    INTENT(IN)    :: ethr
   INTEGER,     INTENT(IN)    :: ndiis
   LOGICAL,     INTENT(IN)    :: uspp
+  LOGICAL,     INTENT(IN)    :: do_hpsi
   INTEGER,     INTENT(OUT)   :: notconv
   REAL(DP),    INTENT(OUT)   :: rmm_iter
   !
@@ -47,7 +48,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   INTEGER                  :: idiis
   INTEGER                  :: motconv
   INTEGER                  :: kdim, kdmx
-  INTEGER                  :: ibnd_start, ibnd_end, ibnd_size
+  INTEGER                  :: ibnd, ibnd_start, ibnd_end, ibnd_size
   INTEGER,     ALLOCATABLE :: ibnd_index(:)
   INTEGER,     ALLOCATABLE :: jbnd_index(:)
   REAL(DP)                 :: empty_ethr
@@ -157,6 +158,14 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   notconv  = nbnd
   motconv  = ibnd_size
   !
+  ! ... Calculate H |psi> and S |psi>, if required
+  !
+  IF ( do_hpsi ) THEN
+     !
+     CALL calc_hpsi( )
+     !
+  END IF
+  !
   ! ... RMM-DIIS's loop
   !
   DO idiis = 1, ndiis
@@ -229,6 +238,23 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   !
   !
 CONTAINS
+  !
+  !
+  SUBROUTINE calc_hpsi( )
+    !
+    IMPLICIT NONE
+    !
+    ! ... Operate the Hamiltonian : H |psi>
+    !
+    CALL h_psi( npwx, npw, nbnd, psi, hpsi )
+    !
+    ! ... Operate the Overlap : S |psi>
+    !
+    IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
+    !
+    RETURN
+    !
+  END SUBROUTINE calc_hpsi
   !
   !
   SUBROUTINE do_diis( idiis )
@@ -558,7 +584,12 @@ CONTAINS
     !
     DO i = 2, kdim
        !
-       IF ( e1(i) < emin ) imin = i
+       IF ( ABS( e1(i) ) < ABS( emin ) ) THEN
+          !
+          imin = i
+          emin = e1(i)
+          !
+       END IF
        !
     END DO
     !

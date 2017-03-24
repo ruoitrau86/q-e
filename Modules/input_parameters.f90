@@ -832,7 +832,7 @@ MODULE input_parameters
           ! dimension of the subspace used in RMM-DIIS diagonalization
           ! used only in PWscf
 
-        INTEGER :: diago_rmm_conv = .false.
+        LOGICAL :: diago_rmm_conv = .false.
           ! if .TRUE., RMM-DIIS is performed up to converge
           ! if .FALSE., RMM-DIIS is performed only once
           ! used only in PWscf
