@@ -191,6 +191,9 @@ rho2zeta.o \
 rotate_wfc.o \
 rotate_wfc_k.o \
 rotate_wfc_gamma.o \
+rotate_xpsi.o \
+rotate_xpsi_k.o \
+rotate_xpsi_gamma.o \
 rrmmdiagg.o \
 ruotaijk.o \
 run_pwscf.o \

@@ -316,7 +316,8 @@ CONTAINS
           !
           IF ( .NOT. lrot ) THEN
              !
-             CALL rotate_wfc ( npwx, npw, nbnd, gstart, nbnd, evc, npol, okvan, evc, et(1,ik) )
+             CALL rotate_xpsi( npwx, npw, nbnd, gstart, nbnd, evc, npol, okvan, &
+                               evc, hevc, sevc, et(1,ik) )
              !
              avg_iter = avg_iter + 1.D0
              !
@@ -507,7 +508,8 @@ CONTAINS
           !
           IF ( .NOT. lrot ) THEN
              !
-             CALL rotate_wfc ( npwx, npw, nbnd, gstart, nbnd, evc, npol, okvan, evc, et(1,ik) )
+             CALL rotate_xpsi( npwx, npw, nbnd, gstart, nbnd, evc, npol, okvan, &
+                               evc, hevc, sevc, et(1,ik) )
              !
              avg_iter = avg_iter + 1.D0
              !
