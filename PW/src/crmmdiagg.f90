@@ -57,9 +57,9 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, spsi, e, &
   REAL(DP),    ALLOCATABLE :: ew(:), hw(:), sw(:)
   LOGICAL,     ALLOCATABLE :: conv(:)
   !
-  REAL(DP),    PARAMETER   :: SREF = 0.5_DP
-  REAL(DP),    PARAMETER   :: SMIN = 0.1_DP
-  REAL(DP),    PARAMETER   :: SMAX = 2.0_DP
+  REAL(DP),    PARAMETER   :: SREF = 0.50_DP
+  REAL(DP),    PARAMETER   :: SMIN = 0.05_DP
+  REAL(DP),    PARAMETER   :: SMAX = 1.00_DP
   !
   CALL start_clock( 'crmmdiagg' )
   !
