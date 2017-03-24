@@ -32,7 +32,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   COMPLEX(DP), INTENT(INOUT) :: psi (npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx*npol,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx*npol,nbnd)
-  REAL(DP),    INTENT(OUT)   :: e(nbnd)
+  REAL(DP),    INTENT(INOUT) :: e(nbnd)
   REAL(DP),    INTENT(IN)    :: g2kin(npwx)
   INTEGER,     INTENT(IN)    :: btype(nbnd)
   REAL(DP),    INTENT(IN)    :: ethr
@@ -142,22 +142,20 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   php = 0._DP
   psp = 0._DP
   !
-  e  = 0._DP
-  ew = 0._DP
-  hw = 0._DP
-  sw = 0._DP
+  ew = e
+  hw = e
+  sw = 1._DP
   !
   conv = .FALSE.
   ibnd_index = 0
   jbnd_index = 0
   !
+  FORALL( ibnd = 1:nbnd )              ibnd_index(ibnd) = ibnd
+  FORALL( ibnd = ibnd_start:ibnd_end ) jbnd_index(ibnd) = ibnd - ibnd_start + 1
+  !
   rmm_iter = 0._DP
   notconv  = nbnd
   motconv  = ibnd_size
-  !
-  ! ... Initial eigenvalues
-  !
-  CALL eigenvalues( .TRUE. )
   !
   ! ... RMM-DIIS's loop
   !
@@ -175,7 +173,7 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
      !
      ! ... Calculate eigenvalues and check convergence
      !
-     CALL eigenvalues( .FALSE. )
+     CALL eigenvalues( )
      !
      IF ( notconv == 0 ) EXIT
      !
@@ -893,57 +891,11 @@ CONTAINS
   END SUBROUTINE line_search
   !
   !
-  SUBROUTINE eigenvalues( first )
+  SUBROUTINE eigenvalues( )
     !
     IMPLICIT NONE
     !
-    LOGICAL, INTENT(IN) :: first
-    !
     INTEGER :: ibnd
-    !
-    COMPLEX(DP), EXTERNAL :: ZDOTC
-    !
-    IF ( first ) THEN
-       !
-       ! ... Operate the Hamiltonian : H |psi>
-       !
-       CALL h_psi( npwx, npw, nbnd, psi, hpsi )
-       !
-       ! ... Operate the Overlap : S |psi>
-       !
-       IF ( uspp ) CALL s_psi( npwx, npw, nbnd, psi, spsi )
-       !
-       ! ... Matrix elements
-       !
-       DO ibnd = ibnd_start, ibnd_end
-          !
-          hw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, hpsi(1,ibnd), 1 ) )
-          !
-       END DO
-       !
-       CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
-       !
-       IF ( uspp ) THEN
-          !
-          DO ibnd = ibnd_start, ibnd_end
-             !
-             sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, spsi(1,ibnd), 1 ) )
-             !
-          END DO
-          !
-       ELSE
-          !
-          DO ibnd = ibnd_start, ibnd_end
-             !
-             sw(ibnd) = DBLE( ZDOTC( kdim, psi(1,ibnd), 1, psi(1,ibnd), 1 ) )
-             !
-          END DO
-          !
-       END IF
-       !
-       CALL mp_sum( sw(ibnd_start:ibnd_end), intra_bgrp_comm )
-       !
-    END IF
     !
     ! ... Energy eigenvalues
     !
@@ -957,25 +909,15 @@ CONTAINS
     !
     ! ... Check convergence
     !
-    IF ( first ) THEN
+    WHERE( btype(1:nbnd) == 1 )
        !
-       conv(1:nbnd) = .FALSE.
+       conv(1:nbnd) = conv(1:nbnd) .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
        !
-    ELSE
+    ELSEWHERE
        !
-       WHERE( btype(1:nbnd) == 1 )
-          !
-          conv(1:nbnd) = conv(1:nbnd) &
-          .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
-          !
-       ELSEWHERE
-          !
-          conv(1:nbnd) = conv(1:nbnd) &
-          .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
-          !
-       END WHERE
+       conv(1:nbnd) = conv(1:nbnd) .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
        !
-    END IF
+    END WHERE
     !
     CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm )
     !

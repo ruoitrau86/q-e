@@ -31,7 +31,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
   COMPLEX(DP), INTENT(INOUT) :: psi (npwx,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: hpsi(npwx,nbnd)
   COMPLEX(DP), INTENT(INOUT) :: spsi(npwx,nbnd)
-  REAL(DP),    INTENT(OUT)   :: e(nbnd)
+  REAL(DP),    INTENT(INOUT) :: e(nbnd)
   REAL(DP),    INTENT(IN)    :: g2kin(npwx)
   INTEGER,     INTENT(IN)    :: btype(nbnd)
   REAL(DP),    INTENT(IN)    :: ethr
@@ -129,14 +129,16 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
   php = 0._DP
   psp = 0._DP
   !
-  e  = 0._DP
-  ew = 0._DP
-  hw = 0._DP
-  sw = 0._DP
+  ew = e
+  hw = e
+  sw = 1._DP
   !
   conv = .FALSE.
   ibnd_index = 0
   jbnd_index = 0
+  !
+  FORALL( ibnd = 1:nbnd )              ibnd_index(ibnd) = ibnd
+  FORALL( ibnd = ibnd_start:ibnd_end ) jbnd_index(ibnd) = ibnd - ibnd_start + 1
   !
   rmm_iter = 0._DP
   notconv  = nbnd
@@ -152,10 +154,6 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
      spsi(1,1:nbnd) = CMPLX( DBLE( spsi(1,1:nbnd) ), 0._DP, kind=DP )
      !
   END IF
-  !
-  ! ... Initial eigenvalues
-  !
-  CALL eigenvalues( .TRUE. )
   !
   ! ... RMM-DIIS's loop
   !
@@ -173,7 +171,7 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
      !
      ! ... Calculate eigenvalues and check convergence
      !
-     CALL eigenvalues( .FALSE. )
+     CALL eigenvalues( )
      !
      IF ( notconv == 0 ) EXIT
      !
@@ -949,78 +947,11 @@ CONTAINS
   END SUBROUTINE line_search
   !
   !
-  SUBROUTINE eigenvalues( first )
+  SUBROUTINE eigenvalues( )
     !
     IMPLICIT NONE
     !
-    LOGICAL, INTENT(IN) :: first
-    !
     INTEGER :: ibnd
-    !
-    REAL(DP), EXTERNAL :: DDOT
-    !
-    IF ( first ) THEN
-       !
-       ! ... Operate the Hamiltonian : H |psi>
-       !
-       CALL h_psi( npwx, npw, nbnd, psi, hpsi )
-       !
-       ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
-       IF ( gstart == 2 ) &
-       hpsi(1,1:nbnd) = CMPLX( DBLE( hpsi(1,1:nbnd) ), 0._DP, kind=DP )
-       !
-       ! ... Operate the Overlap : S |psi>
-       !
-       IF ( uspp ) THEN
-          !
-          CALL s_psi( npwx, npw, nbnd, psi, spsi )
-          !
-          ! NOTE: set Im[ phi(G=0) ] - needed for numerical stability
-          IF ( gstart == 2 ) &
-          spsi(1,1:nbnd) = CMPLX( DBLE( spsi(1,1:nbnd) ), 0._DP, kind=DP )
-          !
-       END IF
-       !
-       ! ... Matrix elements
-       !
-       DO ibnd = ibnd_start, ibnd_end
-          !
-          hw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, hpsi(1,ibnd), 1 )
-          !
-          IF ( gstart == 2 ) &
-          hw(ibnd) = hw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( hpsi(1,ibnd) )
-          !
-       END DO
-       !
-       CALL mp_sum( hw(ibnd_start:ibnd_end), intra_bgrp_comm )
-       !
-       IF ( uspp ) THEN
-          !
-          DO ibnd = ibnd_start, ibnd_end
-             !
-             sw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, spsi(1,ibnd), 1 )
-             !
-             IF ( gstart == 2 ) &
-             sw(ibnd) = sw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( spsi(1,ibnd) )
-             !
-          END DO
-          !
-       ELSE
-          !
-          DO ibnd = ibnd_start, ibnd_end
-             !
-             sw(ibnd) = 2._DP * DDOT( 2 * npw, psi(1,ibnd), 1, psi(1,ibnd), 1 )
-             !
-             IF ( gstart == 2 ) &
-             sw(ibnd) = sw(ibnd) - DBLE( psi(1,ibnd) ) * DBLE ( psi(1,ibnd) )
-             !
-          END DO
-          !
-       END IF
-       !
-       CALL mp_sum( sw(ibnd_start:ibnd_end), intra_bgrp_comm )
-       !
-    END IF
     !
     ! ... Energy eigenvalues
     !
@@ -1034,25 +965,15 @@ CONTAINS
     !
     ! ... Check convergence
     !
-    IF ( first ) THEN
+    WHERE( btype(1:nbnd) == 1 )
        !
-       conv(1:nbnd) = .FALSE.
+       conv(1:nbnd) = conv(1:nbnd) .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
        !
-    ELSE
+    ELSEWHERE
        !
-       WHERE( btype(1:nbnd) == 1 )
-          !
-          conv(1:nbnd) = conv(1:nbnd) &
-          .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < ethr ) )
-          !
-       ELSEWHERE
-          !
-          conv(1:nbnd) = conv(1:nbnd) &
-          .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
-          !
-       END WHERE
+       conv(1:nbnd) = conv(1:nbnd) .OR. ( ( ABS( ew(1:nbnd) - e(1:nbnd) ) < empty_ethr ) )
        !
-    END IF
+    END WHERE
     !
     CALL mp_bcast( conv, root_bgrp_id, inter_bgrp_comm )
     !
