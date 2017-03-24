@@ -256,10 +256,10 @@ CONTAINS
        !
        IF ( conv(ibnd) ) CYCLE
        !
-       CALL ZCOPY( kdm, psi (1,ibnd), 1, phi (1,ibnd,idiis), 1 )
-       CALL ZCOPY( kdm, hpsi(1,ibnd), 1, hphi(1,ibnd,idiis), 1 )
+       CALL ZCOPY( kdim, psi (1,ibnd), 1, phi (1,ibnd,idiis), 1 )
+       CALL ZCOPY( kdim, hpsi(1,ibnd), 1, hphi(1,ibnd,idiis), 1 )
        IF ( uspp ) &
-       CALL ZCOPY( kdm, spsi(1,ibnd), 1, sphi(1,ibnd,idiis), 1 )
+       CALL ZCOPY( kdim, spsi(1,ibnd), 1, sphi(1,ibnd,idiis), 1 )
        !
        php(ibnd,idiis) = hw(ibnd)
        psp(ibnd,idiis) = sw(ibnd)
