@@ -147,7 +147,8 @@ SUBROUTINE iosys()
   USE relax,         ONLY : epse, epsf, epsp, starting_scf_threshold
   !
   USE extrapolation, ONLY : pot_order, wfc_order
-  USE control_flags, ONLY : isolve, max_cg_iter, david, rmm_ndim, gs_nblock, &
+  USE control_flags, ONLY : isolve, max_cg_iter, david, &
+                            rmm_ndim, rmm_conv, gs_nblock, &
                             tr2, imix, gamma_only, &
                             nmix, iverbosity, niter, &
                             remove_rigid_rot_ => remove_rigid_rot, &
@@ -265,8 +266,9 @@ SUBROUTINE iosys()
                                tqr, tq_smoothing, tbeta_smoothing,         &
                                diago_thr_init, diago_cg_maxiter,           &
                                diago_david_ndim, diago_rmm_ndim,           &
-                               diago_gs_nblock, diagonalization,           &
-                               diago_full_acc, startingwfc, startingpot,   &
+                               diago_rmm_conv, diago_gs_nblock,            &
+                               diagonalization, diago_full_acc,            &
+                               startingwfc, startingpot,                   &
                                real_space, scf_must_converge
   USE input_parameters, ONLY : adaptive_thr, conv_thr_init, conv_thr_multi
   !
@@ -942,6 +944,7 @@ SUBROUTINE iosys()
      !
      isolve = 2
      rmm_ndim  = diago_rmm_ndim
+     rmm_conv  = diago_rmm_conv
      gs_nblock = diago_gs_nblock
      !
   CASE DEFAULT

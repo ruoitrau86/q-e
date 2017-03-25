@@ -1259,7 +1259,7 @@ CHARACTER(LEN=256)                          :: diago_str_, mixing_str_
 REAL(DP)                                    :: mixing_beta_, conv_thr_, diago_thr_init_
 INTEGER                                     :: mixing_ndim_, max_nstep_, diago_cg_maxiter_, &
                                                diago_rmm_ndim_, diago_gs_nblock_
-LOGICAL                                     :: real_space_q_, diago_full_acc_, found_, &
+LOGICAL                                     :: real_space_q_, diago_full_acc_, diago_rmm_conv_, found_, &
                                                tq_smoothing_ = .FALSE., tbeta_smoothing_ =.FALSE.
 CHARACTER(iotk_attlenx)                     :: attr
 !
@@ -1306,6 +1306,9 @@ IF ( ierr /= 0 ) RETURN
 CALL  iotk_scan_dat( iunit, "diago_rmm_ndim" , diago_rmm_ndim_, IERR = ierr )
 IF ( ierr /= 0 ) RETURN
 !
+CALL  iotk_scan_dat( iunit, "diago_rmm_conv" , diago_rmm_conv_, IERR = ierr )
+IF ( ierr /= 0 ) RETURN
+!
 CALL  iotk_scan_dat( iunit, "diago_gs_nblock" , diago_gs_nblock_, IERR = ierr )
 IF ( ierr /= 0 ) RETURN
 !
@@ -1318,7 +1321,7 @@ CALL qes_init_electron_control ( obj, "electron_control", diago_str_, mixing_str
                                  conv_thr_, mixing_ndim_, max_nstep_, real_space_q_, &
                                  tq_smoothing_, tbeta_smoothing_, diago_thr_init_, &
                                  diago_full_acc_, diago_cg_maxiter_, &
-                                 diago_rmm_ndim_, diago_gs_nblock_)
+                                 diago_rmm_ndim_, diago_rmm_conv_, diago_gs_nblock_)
 !
 END SUBROUTINE qexsd_get_electron_control
 !

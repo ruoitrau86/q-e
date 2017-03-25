@@ -160,7 +160,7 @@ SUBROUTINE diag_bands( iter, ik, avg_iter )
   USE gvect,                ONLY : gstart
   USE wvfct,                ONLY : g2kin, nbndx, et, nbnd, npwx, btype
   USE control_flags,        ONLY : ethr, lscf, max_cg_iter, isolve, &
-                                   rmm_ndim, gs_nblock, &
+                                   rmm_ndim, rmm_conv, gs_nblock, &
                                    gamma_only, use_para_diag
   USE noncollin_module,     ONLY : noncolin, npol
   USE wavefunctions_module, ONLY : evc
@@ -321,6 +321,8 @@ CONTAINS
           !
           CALL rrmmdiagg( npwx, npw, nbnd, evc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, gstart, notconv, rmm_iter )
+          !
+          IF ( lscf .AND. ( .NOT. rmm_conv ) ) notconv = 0
           !
           avg_iter = avg_iter + rmm_iter
           !
@@ -506,6 +508,8 @@ CONTAINS
           !
           CALL crmmdiagg( npwx, npw, nbnd, npol, evc, sevc, et(1,ik), &
                g2kin(1), btype(1,ik), ethr, rmm_ndim, okvan, notconv, rmm_iter )
+          !
+          IF ( lscf .AND. ( .NOT. rmm_conv ) ) notconv = 0
           !
           avg_iter = avg_iter + rmm_iter
           !

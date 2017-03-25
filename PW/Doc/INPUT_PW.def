@@ -1908,6 +1908,14 @@ input_description -distribution {Quantum Espresso} -package PWscf -program pw.x 
             }
         }
 
+        var diago_rmm_conv -type LOGICAL { 
+            default { .FALSE. }
+            info {
+                If .TRUE., RMM-DIIS is performed up to converge.
+                If .FALSE., RMM-DIIS is performed only once.
+            }
+        }
+
         var diago_gs_nblock -type INTEGER { 
             default { 16 }
             info {

@@ -832,6 +832,11 @@ MODULE input_parameters
           ! dimension of the subspace used in RMM-DIIS diagonalization
           ! used only in PWscf
 
+        INTEGER :: diago_rmm_conv = .false.
+          ! if .TRUE., RMM-DIIS is performed up to converge
+          ! if .FALSE., RMM-DIIS is performed only once
+          ! used only in PWscf
+
         INTEGER :: diago_gs_nblock = 16
           ! blocking size in Gram-Schmidt orthogonalization
           ! used only in PWscf
@@ -969,7 +974,7 @@ MODULE input_parameters
           mixing_mode, mixing_beta, mixing_ndim, mixing_fixed_ns,      &
           tqr, tq_smoothing, tbeta_smoothing,                          &
           diago_cg_maxiter, diago_david_ndim, diago_rmm_ndim,          &
-          diago_gs_nblock, diagonalization,                            &
+          diago_rmm_conv, diago_gs_nblock, diagonalization,            &
           startingpot, startingwfc , conv_thr,                         &
           adaptive_thr, conv_thr_init, conv_thr_multi,                 &
           diago_thr_init, n_inner, fermi_energy, rotmass, occmass,     &

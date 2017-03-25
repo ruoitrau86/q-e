@@ -245,7 +245,8 @@ MODULE qexsd_input
                                           conv_thr, mixing_ndim, max_nstep, tqr,tq_smoothing, &
                                           tbeta_smoothing, &
                                           diago_thr_init, diago_full_acc, diago_cg_maxiter,&
-                                          diago_david_ndim, diago_rmm_ndim, diago_gs_nblock)
+                                          diago_david_ndim, diago_rmm_ndim, diago_rmm_conv, &
+                                          diago_gs_nblock)
   !-------------------------------------------------------------------------------------------
   !
   IMPLICIT NONE
@@ -255,7 +256,8 @@ MODULE qexsd_input
   REAL(DP),INTENT(IN)                     :: mixing_beta, conv_thr, diago_thr_init
   INTEGER,INTENT(IN)                      :: mixing_ndim,max_nstep,diago_cg_maxiter,&
                                              diago_david_ndim,diago_rmm_ndim,diago_gs_nblock
-  LOGICAL,INTENT(IN)                      :: diago_full_acc,tqr, tq_smoothing, tbeta_smoothing
+  LOGICAL,INTENT(IN)                      :: diago_full_acc,diago_rmm_conv,&
+                                             tqr, tq_smoothing, tbeta_smoothing
   !
   CHARACTER(LEN=*),PARAMETER              :: TAGNAME="electron_control"
   !
@@ -265,7 +267,8 @@ MODULE qexsd_input
                                 tq_smoothing= tq_smoothing, tbeta_smoothing = tbeta_smoothing,&
                                 real_space_q=tqr,diago_thr_init=diago_thr_init,&
                                 diago_full_acc=diago_full_acc,diago_cg_maxiter=diago_cg_maxiter,&
-                                diago_rmm_ndim=diago_rmm_ndim,diago_gs_nblock=diago_gs_nblock)
+                                diago_rmm_ndim=diago_rmm_ndim,diago_rmm_conv=diago_rmm_conv,&
+                                diago_gs_nblock=diago_gs_nblock)
    !
    END SUBROUTINE qexsd_init_electron_control
    !

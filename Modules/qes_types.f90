@@ -743,6 +743,7 @@ TYPE :: electron_control_type
    LOGICAL  :: diago_full_acc
    INTEGER  :: diago_cg_maxiter
    INTEGER  :: diago_rmm_ndim
+   LOGICAL  :: diago_rmm_conv
    INTEGER  :: diago_gs_nblock
    !
 END TYPE electron_control_type

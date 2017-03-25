@@ -261,6 +261,9 @@ CONTAINS
     CASE ( 'diago_thr_init' )
        CALL iotk_scan_dat_inside( xmlinputunit, diago_thr_init, ierr = ierr )
        !
+    CASE ( 'diago_rmm_conv' )
+       CALL iotk_scan_dat_inside( xmlinputunit, diago_rmm_conv, ierr = ierr )
+       !
     CASE ( 'diago_rmm_ndim' )
        CALL iotk_scan_dat_inside( xmlinputunit, diago_rmm_ndim, ierr = ierr )
        !
