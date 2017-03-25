@@ -363,6 +363,8 @@ MODULE read_namelists_module
        diago_thr_init = 0.0_DP
        diago_cg_maxiter = 20
        diago_david_ndim = 4
+       diago_rmm_ndim = 4
+       diago_gs_nblock = 16
        diago_full_acc = .FALSE.
        !
        sic = 'none'
@@ -950,6 +952,8 @@ MODULE read_namelists_module
        CALL mp_bcast( diago_thr_init,       ionode_id, intra_image_comm )
        CALL mp_bcast( diago_cg_maxiter,     ionode_id, intra_image_comm )
        CALL mp_bcast( diago_david_ndim,     ionode_id, intra_image_comm )
+       CALL mp_bcast( diago_rmm_ndim,       ionode_id, intra_image_comm )
+       CALL mp_bcast( diago_gs_nblock,      ionode_id, intra_image_comm )
        CALL mp_bcast( diago_full_acc,       ionode_id, intra_image_comm )
        CALL mp_bcast( sic,                  ionode_id, intra_image_comm )
        CALL mp_bcast( sic_epsilon ,         ionode_id, intra_image_comm )

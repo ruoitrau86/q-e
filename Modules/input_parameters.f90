@@ -813,7 +813,7 @@ MODULE input_parameters
           ! used only in PWscf
 
         CHARACTER(len=80) :: diagonalization = 'david'
-          ! diagonalization = 'david' or 'cg'
+          ! diagonalization = 'david' or 'cg' or 'rmm'
           ! algorithm used by PWscf for iterative diagonalization
 
         REAL(DP) :: diago_thr_init = 0.0_DP
@@ -826,6 +826,14 @@ MODULE input_parameters
 
         INTEGER :: diago_david_ndim = 4
           ! dimension of the subspace used in Davidson diagonalization
+          ! used only in PWscf
+
+        INTEGER :: diago_rmm_ndim = 4
+          ! dimension of the subspace used in RMM-DIIS diagonalization
+          ! used only in PWscf
+
+        INTEGER :: diago_gs_nblock = 16
+          ! blocking size in Gram-Schmidt orthogonalization
           ! used only in PWscf
 
         LOGICAL :: diago_full_acc = .false.
@@ -960,7 +968,8 @@ MODULE input_parameters
           diis_nchmix, diis_nrot, diis_rothr, diis_ethr, diis_chguess, &
           mixing_mode, mixing_beta, mixing_ndim, mixing_fixed_ns,      &
           tqr, tq_smoothing, tbeta_smoothing,                          &
-          diago_cg_maxiter, diago_david_ndim, diagonalization,         &
+          diago_cg_maxiter, diago_david_ndim, diago_rmm_ndim,          &
+          diago_gs_nblock, diagonalization,                            &
           startingpot, startingwfc , conv_thr,                         &
           adaptive_thr, conv_thr_init, conv_thr_multi,                 &
           diago_thr_init, n_inner, fermi_energy, rotmass, occmass,     &

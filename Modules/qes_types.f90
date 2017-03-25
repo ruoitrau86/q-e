@@ -742,6 +742,8 @@ TYPE :: electron_control_type
    REAL(DP) :: diago_thr_init
    LOGICAL  :: diago_full_acc
    INTEGER  :: diago_cg_maxiter
+   INTEGER  :: diago_rmm_ndim
+   INTEGER  :: diago_gs_nblock
    !
 END TYPE electron_control_type
 

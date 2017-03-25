@@ -195,7 +195,9 @@ MODULE control_flags
   INTEGER, PUBLIC :: &
     isolve,           &! Davidson or CG or RMM-DIIS diagonalization
     david,            &! max dimension of subspace in Davidson diagonalization
-    max_cg_iter        ! maximum number of iterations in a CG call
+    max_cg_iter,      &! maximum number of iterations in a CG call
+    rmm_ndim,         &! max dimension of subspace in RMM-DIIS diagonalization
+    gs_nblock          ! blocking size in Gram-Schmidt orthogonalization
   LOGICAL, PUBLIC :: &
     diago_full_acc = .FALSE. ! if true,  empty eigenvalues have the same
                              ! accuracy of the occupied ones

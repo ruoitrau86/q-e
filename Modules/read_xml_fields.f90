@@ -255,8 +255,14 @@ CONTAINS
     CASE ( 'diago_full_acc' )
        CALL iotk_scan_dat_inside( xmlinputunit, diago_full_acc, ierr = ierr )
        !
+    CASE ( 'diago_gs_nblock' )
+       CALL iotk_scan_dat_inside( xmlinputunit, diago_gs_nblock, ierr = ierr )
+       !
     CASE ( 'diago_thr_init' )
        CALL iotk_scan_dat_inside( xmlinputunit, diago_thr_init, ierr = ierr )
+       !
+    CASE ( 'diago_rmm_ndim' )
+       CALL iotk_scan_dat_inside( xmlinputunit, diago_rmm_ndim, ierr = ierr )
        !
     CASE ( 'diagonalization' )
        CALL iotk_scan_dat_inside( xmlinputunit, tmpstr, ierr = ierr )

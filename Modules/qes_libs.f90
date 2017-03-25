@@ -3635,6 +3635,12 @@ SUBROUTINE qes_write_electron_control(iun, obj)
       CALL iotk_write_begin(iun, 'diago_cg_maxiter')
          WRITE(iun, '(I12)') obj%diago_cg_maxiter
       CALL iotk_write_end(iun, 'diago_cg_maxiter')
+      CALL iotk_write_begin(iun, 'diago_rmm_ndim')
+         WRITE(iun, '(I12)') obj%diago_rmm_ndim
+      CALL iotk_write_end(iun, 'diago_rmm_ndim')
+      CALL iotk_write_begin(iun, 'diago_gs_nblock')
+         WRITE(iun, '(I12)') obj%diago_gs_nblock
+      CALL iotk_write_end(iun, 'diago_gs_nblock')
    CALL iotk_write_end(iun, TRIM(obj%tagname))
    !
 END SUBROUTINE qes_write_electron_control
@@ -3642,7 +3648,7 @@ END SUBROUTINE qes_write_electron_control
 SUBROUTINE qes_init_electron_control(obj, tagname, diagonalization, mixing_mode, &
                               mixing_beta, conv_thr, mixing_ndim, max_nstep, real_space_q, &
                               tq_smoothing, tbeta_smoothing, diago_thr_init, &
-                              diago_full_acc, diago_cg_maxiter)
+                              diago_full_acc, diago_cg_maxiter, diago_rmm_ndim, diago_gs_nblock)
    IMPLICIT NONE
 
    TYPE(electron_control_type) :: obj
@@ -3660,6 +3666,8 @@ SUBROUTINE qes_init_electron_control(obj, tagname, diagonalization, mixing_mode,
    REAL(DP) :: diago_thr_init
    LOGICAL  :: diago_full_acc
    INTEGER  :: diago_cg_maxiter
+   INTEGER  :: diago_rmm_ndim
+   INTEGER  :: diago_gs_nblock
 
    obj%tagname = TRIM(tagname)
    obj%diagonalization = diagonalization
@@ -3674,6 +3682,8 @@ SUBROUTINE qes_init_electron_control(obj, tagname, diagonalization, mixing_mode,
    obj%diago_thr_init = diago_thr_init
    obj%diago_full_acc = diago_full_acc
    obj%diago_cg_maxiter = diago_cg_maxiter
+   obj%diago_rmm_ndim = diago_rmm_ndim
+   obj%diago_gs_nblock = diago_gs_nblock
 
 END SUBROUTINE qes_init_electron_control
 
