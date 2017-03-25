@@ -1901,7 +1901,7 @@ input_description -distribution {Quantum Espresso} -package PWscf -program pw.x 
         }
 
         var diago_rmm_ndim -type INTEGER { 
-            default { 8 }
+            default { 6 }
             info {
                 For RMM-DIIS diagonalization: dimension of workspace
                 (number of wavefunction packets, at least 2 needed).
@@ -1909,7 +1909,7 @@ input_description -distribution {Quantum Espresso} -package PWscf -program pw.x 
         }
 
         var diago_rmm_conv -type LOGICAL { 
-            default { .FALSE. }
+            default { .TRUE. }
             info {
                 If .TRUE., RMM-DIIS is performed up to converge.
                 If .FALSE., RMM-DIIS is performed only once.

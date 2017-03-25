@@ -364,7 +364,7 @@ MODULE read_namelists_module
        diago_cg_maxiter = 20
        diago_david_ndim = 4
        diago_rmm_ndim = 6
-       diago_rmm_conv = .FALSE.
+       diago_rmm_conv = .TRUE.
        diago_gs_nblock = 16
        diago_full_acc = .FALSE.
        !
