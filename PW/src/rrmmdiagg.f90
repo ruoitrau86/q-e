@@ -70,6 +70,8 @@ SUBROUTINE rrmmdiagg( npwx, npw, nbnd, psi, hpsi, spsi, e, &
   !
   ibnd_size = MAX( ibnd_end - ibnd_start + 1, 0 )
   !
+  IF( ibnd_size == 0 ) CALL errore( ' rrmmdiagg ', ' ibnd_size == 0 ', 1 )
+  !
   ALLOCATE( phi( npwx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' rrmmdiagg ', ' cannot allocate phi ', ABS(ierr) )
   !

@@ -83,6 +83,8 @@ SUBROUTINE crmmdiagg( npwx, npw, nbnd, npol, psi, hpsi, spsi, e, &
   !
   ibnd_size = MAX( ibnd_end - ibnd_start + 1, 0 )
   !
+  IF( ibnd_size == 0 ) CALL errore( ' crmmdiagg ', ' ibnd_size == 0 ', 1 )
+  !
   ALLOCATE( phi( kdmx, ibnd_start:ibnd_end, ndiis ), STAT=ierr )
   IF( ierr /= 0 ) CALL errore( ' crmmdiagg ', ' cannot allocate phi ', ABS(ierr) )
   !
