@@ -434,7 +434,7 @@ CONTAINS
              CALL DAXPY( 2 * npw, vr(kdiis), phi (1,ibnd,kdiis), 1, psi (1,ibnd), 1 )
              CALL DAXPY( 2 * npw, vr(kdiis), hphi(1,ibnd,kdiis), 1, hpsi(1,ibnd), 1 )
              IF ( uspp ) &
-             CALL ZAXPY( 2 * npw, vr(kdiis), sphi(1,ibnd,kdiis), 1, spsi(1,ibnd), 1 )
+             CALL DAXPY( 2 * npw, vr(kdiis), sphi(1,ibnd,kdiis), 1, spsi(1,ibnd), 1 )
              !
              ! ... Residual vectors
              !
